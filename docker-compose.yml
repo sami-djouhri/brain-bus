@@ -1,0 +1,72 @@
+services:
+  brain-bus:
+    build: .
+    image: homelab/brain-bus:local
+    container_name: brain-bus
+    restart: unless-stopped
+    mem_limit: 256m
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /run:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8112:8000"
+    environment:
+      SERVICE_NAME: brain-bus
+      ENV: prod
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USERNAME: homelab
+      MQTT_PASSWORD_FILE: /run/secrets/mqtt_password
+      AUTH_REQUIRED: "false"
+      LOG_LEVEL: INFO
+      HEALTH_DB_PATH: /data/brain.db
+      BRAIN_RULES_PATH: /app/config/rules.yaml
+      JUNIOR_NOTIFY_URL: http://host-junior:8765/notify
+      OBSIDIAN_URL: http://192.0.2.10:8765
+      REGISTRY_PATH: /app/shared/platform-registry.json
+      LLM_ENABLED: "true"
+      LLM_GATEWAY_URL: "http://192.0.2.10:8081/v1"
+      LLM_GATEWAY_MODEL: "gemma-3-4b-it-q4_k_m.gguf"
+      LLM_DIRECT_URL: "http://192.0.2.10:8081/v1"
+      LLM_DIRECT_MODEL: "gemma-3-4b-it-q4_k_m.gguf"
+      LLM_GATEWAY_TOKEN_FILE: /run/secrets/gateway_token
+      LLM_FALLBACK_URL: "http://192.0.2.10:8081/v1"
+      LLM_FALLBACK_MODEL: "gemma-3-4b-it-q4_k_m.gguf"
+      LLM_WAKE_URL: ""
+      LIFE_OPS_API_URL: "http://life-ops-api:8000"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/data
+      - /home/user/shared/homelab/platform-registry.json:/app/shared/platform-registry.json:ro
+      - ./secrets/mqtt_password:/run/secrets/mqtt_password:ro
+      - ./secrets/gateway_token:/run/secrets/gateway_token:ro
+      - ./secrets/obsidian_token:/run/secrets/obsidian_token:ro
+      - ./secrets/ha_token:/run/secrets/ha_token:ro
+      - ./secrets/brain_callback_secret:/run/secrets/brain_callback_secret:ro
+      - ./secrets/docker_api_key:/run/secrets/docker_api_key:ro
+    networks:
+      - cc-core
+      - cc-apps
+    labels:
+      homelab.service: "brain-bus"
+      homelab.category: "eigenbau"
+      homelab.route: "/brain-bus/"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  cc-core:
+    external: true
+    name: cc-core
+  cc-apps:
+    external: true
+    name: cc-apps

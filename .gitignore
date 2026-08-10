@@ -1,0 +1,39 @@
+# --- audit hardening (auto) ---
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.key
+*.pem
+secrets.yaml
+secrets.yml
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+# Node / Frontend
+node_modules/
+dist/
+build/
+.next/
+.cache/
+# Daten / Runtime
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+# OS
+.DS_Store
+*.bak-pre-*
