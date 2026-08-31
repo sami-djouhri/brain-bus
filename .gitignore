@@ -1,0 +1,52 @@
+# --- audit hardening (auto) ---
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.key
+*.pem
+secrets.yaml
+secrets.yml
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+# Node / Frontend
+node_modules/
+dist/
+build/
+.next/
+.cache/
+# Daten / Runtime
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+# OS
+.DS_Store
+*.bak-pre-*
+
+# Secrets bleiben lokal (Policy: Secrets nie in Git).
+# Frueher stand hier nur secrets/ntfy_token — eine Einzelregel, die den naechsten
+# neuen Token nicht mehr erfasst haette.
+secrets/*
+
+# ⚠️ ACHTUNG, DIESE REGEL RAEUMT NICHT AUF: git ignoriert bereits GETRACKTE Dateien
+# nicht. Diese sechs liegen weiterhin im Klartext in Gitea und sind durch die Zeile
+# oben NICHT geschuetzt — sie muessen einzeln aus dem Index genommen UND rotiert
+# werden (Werkzeug: ~/homelab-work/zugangsdaten-rotation):
+#   secrets/brain_callback_secret  secrets/docker_api_key  secrets/gateway_token
+#   secrets/ha_token               secrets/mqtt_password   secrets/obsidian_token
+# Bis dahin taeuscht diese .gitignore eine Abdeckung vor, die es nicht gibt.

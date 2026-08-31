@@ -1,0 +1,16 @@
+[project]
+name = "brain-bus"
+version = "0.1.0"
+description = "Homelab Eigen-Service Template"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
