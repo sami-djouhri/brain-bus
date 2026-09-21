@@ -39,7 +39,7 @@ data/
 *.bak-pre-*
 
 # Secrets bleiben lokal (Policy: Secrets nie in Git).
-# Frueher stand hier nur secrets/ntfy_token — eine Einzelregel, die den naechsten
+# Frueher stand hier nur secrets/ntfy_token, eine Einzelregel, die den naechsten
 # neuen Token nicht mehr erfasst haette.
 secrets/*
 
