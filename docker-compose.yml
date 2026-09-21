@@ -29,7 +29,7 @@ services:
       JUNIOR_NOTIFY_URL: http://host-junior:8765/notify
       NTFY_URL: http://ntfy
       # Dritter Meldeweg: der interne IRC-Server auf node1 (irc-posten). Bekommt
-      # bewusst ALLE Meldungen — auch die, die fuer einen Push zu leise sind.
+      # bewusst ALLE Meldungen, auch die, die fuer einen Push zu leise sind.
       IRC_POSTEN_URL: http://192.0.2.10:8149
       IRC_POSTEN_TOKEN_FILE: /run/secrets/irc_posten_token
       NTFY_DEFAULT_TOPIC: host-critical
@@ -37,14 +37,14 @@ services:
       REGISTRY_PATH: /app/shared/platform-registry.json
       LLM_ENABLED: "true"
       # Reasoning ist Hintergrundarbeit und darf den Sprachpfad nicht blockieren.
-      # Bis 2026-08-19 zeigten alle drei Stufen auf .13:8081 — denselben llama.cpp,
+      # Bis 2026-08-19 zeigten alle drei Stufen auf .13:8081: denselben llama.cpp,
       # den die Sprachkette nutzt. Bei --parallel 1 wartet eine Sprachanfrage die
       # komplette Hintergrund-Antwort ab (gemessen: Median 28 s, p90 56 s, max 83 s),
       # laeuft in ihren 10-20-s-Timeout und die Antwort bleibt aus.
       # Jetzt echte Staffelung ueber drei getrennte Backends:
       #   primary  = node2 Slow-Lane (Qwen-7B, cpu_shares 128 -> weicht zurueck)
       #   direct   = LXC .16 LARGE (x86, anderer Host)
-      #   fallback = node2 Fast-Path — nur noch Notnagel, nicht mehr Normalfall
+      #   fallback = node2 Fast-Path, nur noch Notnagel, nicht mehr Normalfall
       LLM_GATEWAY_URL: "http://192.0.2.10:8083/v1"
       LLM_GATEWAY_MODEL: "qwen2.5-7b-instruct-q4_k_m.gguf"
       LLM_DIRECT_URL: "http://192.0.2.10:8081/v1"

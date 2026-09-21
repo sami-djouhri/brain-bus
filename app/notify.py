@@ -45,7 +45,7 @@ class NotifyClient:
                     headers={"X-Brain-Secret": _brain_secret()},
                 )
                 # Ein abgelehnter POST ist kein Versand. Bis 2026-08-23 hiess die
-                # Zeile auch bei 401/403 "notify.sent" — eine kaputte Zustellung
+                # Zeile auch bei 401/403 "notify.sent", eine kaputte Zustellung
                 # war im Log von einer geglueckten nicht zu unterscheiden.
                 if resp.is_success:
                     log.info(
@@ -61,7 +61,7 @@ class NotifyClient:
 
 class NtfyClient:
     """Parallel-Kanal an den host-ntfy (notify-net): macht high/critical-Alarme
-    Discord-unabhaengig aufs Handy zustellbar. Fail-silent wie NotifyClient —
+    Discord-unabhaengig aufs Handy zustellbar. Fail-silent wie NotifyClient:
     ein ntfy-Fehler darf den Discord-Pfad nie blockieren (und umgekehrt)."""
 
     # Vollstaendige Abbildung auf die ntfy-Stufen (5=max ... 1=min). Bis 2026-08-23
@@ -119,7 +119,7 @@ class NtfyClient:
                 )
                 # Wie oben: ohne diese Unterscheidung sieht ein fehlendes
                 # Topic-Recht (403) im Log genauso aus wie eine zugestellte
-                # Meldung — und der Kanal traegt still nie etwas.
+                # Meldung, und der Kanal traegt still nie etwas.
                 if resp.is_success:
                     log.info(
                         "ntfy.sent", status=resp.status_code, topic=target, title=title[:60]
@@ -136,14 +136,14 @@ class IrcClient:
     """Dritter Weg neben Discord und ntfy: der interne IRC-Server auf node1.
 
     Der Unterschied zu den beiden anderen ist Absicht: Discord und ntfy bekommen
-    eine Auswahl (Discord ab high, ntfy je nach Kanal), IRC bekommt **alles** — auch
+    eine Auswahl (Discord ab high, ntfy je nach Kanal), IRC bekommt **alles**, auch
     das, was fuer einen Push zu leise waere. Ein Chatkanal draengelt nicht, also darf
     er vollstaendig sein; genau das macht ihn zum Ort, an dem man spaeter nachliest
     ("wann fing das an?"). Die ~84 taeglichen Pushes bleiben davon unberuehrt.
 
     Fail-silent wie die anderen: ein IRC-Fehler darf weder Discord noch ntfy
     blockieren. Welchen Kanal eine Meldung nimmt, entscheidet irc-posten anhand der
-    Dringlichkeit — brain-bus muss den Kanalschnitt des Hauses nicht kennen.
+    Dringlichkeit: brain-bus muss den Kanalschnitt des Hauses nicht kennen.
     """
 
     def __init__(
@@ -176,7 +176,7 @@ class IrcClient:
                     },
                     headers={"Authorization": f"Bearer {self._token()}"},
                 )
-                # Erfolg und Ablehnung getrennt protokollieren — dieselbe Lehre wie
+                # Erfolg und Ablehnung getrennt protokollieren: dieselbe Lehre wie
                 # oben bei ntfy: ein 401 sieht sonst im Log aus wie eine Zustellung.
                 if resp.is_success:
                     log.info("irc.sent", status=resp.status_code, text=text[:60])

@@ -4,14 +4,14 @@
 Hintergrund (2026-08-23): alle Meldungen liefen auf ein Topic (`host-critical`),
 gemessen ~84 Pushes/Tag, jeweils doppelt auf Discord und Handy. Gleichzeitig kamen
 11 Regeln mit gesetztem Topic nie an, weil die Zustellung an `priority in
-{high, critical}` haengt — darunter `ssh-login-notify` und saemtliche Entwarnungen.
+{high, critical}` haengt: darunter `ssh-login-notify` und saemtliche Entwarnungen.
 
 Die drei Kanaele:
   host-critical  weckt (Ausfall, Sicherheit, drohender Datenverlust)
   host-warn      tagsueber, leise (Kapazitaet, Degradation, kommt-noch)
   host-info      stumm (Entwarnungen, Routine, Nachschlagen)
 
-Der Cooldown wirkt je Subjekt (`cooldown_key_fields`), nicht regel-global — sonst
+Der Cooldown wirkt je Subjekt (`cooldown_key_fields`), nicht regel-global, sonst
 verschluckt die erste gemeldete Unit die zweite. Genau deshalb steht der globale
 Vorgabewert in rules.py bewusst auf 0; hier wird er pro Regel gesetzt.
 
@@ -92,6 +92,13 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # damit nirgendwohin. Cooldown je Kachel bzw. je Wirt, nicht regel-global.
     "launchpad-verweis-tot":             ("warn",     "normal", 86400,  ["titel"]),
     "launchpad-messung-steht":           ("warn",     "normal", 86400,  ["host"]),
+    # --- Fremdquellen der Tagesuebersicht (neu 2026-09-21) ---
+    # "warn" und nicht "critical" nach Owner-Entscheid: eine tote Datenquelle
+    # ist aergerlich, aber nichts, wofuer man nachts aufsteht. Cooldown je
+    # Quelle (`name`), sonst verschluckt die erste ausgefallene Quelle die
+    # Meldung ueber die zweite. Genau dieser Fall lag am 2026-09-21 vor:
+    # paperless und marktwatch waren gleichzeitig tot.
+    "lifeops-quelle-antwortet-nicht":    ("warn",     "normal", 86400,  ["name"]),
     # --- Waechter-Herzschlag (neu 2026-09-20) ---
     # Fuenf Zeilen fuer ALLE Waechter. Vorher wuchs diese Tabelle mit jedem
     # neuen Waechter um ein bis drei Zeilen, und genau das Vergessen einer
@@ -120,7 +127,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "ct-log-alert":                      ("critical", "high",   3600,  ["domain"]),
     "attack-surface-alert":              ("critical", "high",   3600,  ["target"]),
     "ddos-schutz-aktiv":                 ("critical", "high",   1800,  []),
-    # War auf prioritaet "default" — kein gueltiger Wert, wurde deshalb NIE zugestellt.
+    # War auf prioritaet "default", kein gueltiger Wert, wurde deshalb NIE zugestellt.
     # Ausgerechnet die Regel, die meldet, dass der DDoS-Waechter nichts mehr sieht.
     "ddos-schutz-blind":                 ("critical", "high",   21600, ["hosts"]),
     "game-saves-kaputt":                 ("critical", "high",   21600, ["wirt"]),
@@ -144,14 +151,14 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "container-oom-predicted":           ("warn",     "normal", 21600, ["host", "container"]),
     "herb-chat-upstream-down-sustained": ("warn",     "normal", 1800,  []),
     "ha-sync-failures-streak":           ("warn",     "normal", 7200,  ["host"]),
-    # 136 Meldungen in 3,8 Tagen — der Cooldown von 2026-08-19 hat gewirkt, der
+    # 136 Meldungen in 3,8 Tagen, der Cooldown von 2026-08-19 hat gewirkt, der
     # Kanal blieb aber "critical". Beides zusammen ergibt erst Ruhe.
     "docker-network-unauthorized-connect": ("warn",   "normal", 3600,  ["host", "container"]),
     "crowdsec-security-decision":        ("warn",     "normal", 3600,  ["host"]),
     "network-device-discovered-new":     ("warn",     "normal", 3600,  ["mac"]),
     "systemd-unit-failed":               ("warn",     "normal", 3600,  ["host", "unit"]),
     # Einzige gewollte Abweichung vom Muster "warn -> normal": leiser Kanal, aber hohe
-    # Prioritaet und damit auch Discord. Begruendung steht an der Regel selbst — der
+    # Prioritaet und damit auch Discord. Begruendung steht an der Regel selbst, der
     # Waechter meldet je Unit genau EINMAL, eine leise Meldung ginge unter. Genau so
     # blieben meldeweg-probe und ddos-waechter tagelang unbemerkt.
     "systemd-unit-orphan":               ("warn",     "high",   3600,  ["host", "unit"]),
@@ -162,7 +169,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "image-cve-alert":                   ("warn",     "normal", 86400, ["host", "image"]),
     "node18-orchestrator-failed":        ("warn",     "normal", 3600,  []),
     # Spielserver auf gamehost. Bewusst NICHT critical: niemand muss um 3 Uhr aufstehen,
-    # weil ein Spiel nicht erreichbar ist — die richtige Reaktion ist "morgen ansehen".
+    # weil ein Spiel nicht erreichbar ist, die richtige Reaktion ist "morgen ansehen".
     # Cooldown je Spiel, sonst verschluckt das erste kaputte Spiel das zweite.
     "spiel-nicht-weckbar":               ("warn",     "normal", 21600, ["spiel"]),
     "game-arbiter-steht":                ("warn",     "normal", 7200,  []),
@@ -304,7 +311,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # --- stumm: Entwarnungen, Routine, Nachschlagen ---
     # ★ BEWUSST OHNE Cooldown. Diese Regel traegt die Ende-zu-Ende-Probe des
     # Meldewegs (homelab-work/meldeweg-probe). Ein Cooldown daempft dann nicht
-    # Laerm, sondern verschluckt den Gesundheitstest — die Probe meldet einen
+    # Laerm, sondern verschluckt den Gesundheitstest, die Probe meldet einen
     # gestoerten Meldeweg, obwohl nur ihr eigener Poke unterdrueckt wurde.
     # Ein Test-Poke wird absichtlich abgesetzt und stuermt nie.
     "auto-test-poke":                    ("info",     "low",    0,     []),
@@ -316,7 +323,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "edge-domain-resolved":              ("info",     "low",    300,   ["domain"]),
     "systemd-unit-recovered":            ("info",     "low",    300,   ["host", "unit"]),
     # Bewusst OHNE Cooldown: jede Anmeldung zaehlt einzeln. Bei ~3/Tag traegt der
-    # stumme Kanal das, und ein Cooldown wuerde die zweite Anmeldung verschlucken —
+    # stumme Kanal das, und ein Cooldown wuerde die zweite Anmeldung verschlucken,
     # also genau die, die interessant waere.
     "ssh-login-notify":                  ("info",     "low",    0,     ["host", "user", "source"]),
     "game-version-wieder-messbar":       ("info",     "low",    300,   ["spiel"]),
@@ -380,7 +387,7 @@ def umschreiben(text: str) -> str:
 
         rid = m.group(1)
         if rid not in ZUORDNUNG:
-            raise SystemExit(f"Regel ohne Zuordnung: {rid} — Tabelle ergaenzen, nicht raten.")
+            raise SystemExit(f"Regel ohne Zuordnung: {rid}, Tabelle ergaenzen, nicht raten.")
         kanal, prio, cooldown, keys = ZUORDNUNG[rid]
 
         # Regelblock einsammeln (bis zum naechsten '- id:' oder Dateiende).
@@ -465,7 +472,7 @@ def pruefen(pfad: Path) -> int:
     """Liest das Ergebnis zurueck und vergleicht es gegen die Tabelle.
 
     Ohne diesen Schritt bewiese ein fehlerfreier Lauf nur, dass das Skript
-    durchlief — nicht, dass in der Datei steht, was gemeint war.
+    durchlief, und nicht, dass in der Datei steht, was gemeint war.
     """
     d = yaml.safe_load(pfad.read_text(encoding="utf-8"))
     fehler = 0
@@ -480,7 +487,7 @@ def pruefen(pfad: Path) -> int:
         # -- das sah nach kaputtem Werkzeug aus und verdeckte die anderen Abweichungen
         # gleich mit, weil der Lauf abbrach (seit 2026-08-26 genau dieser Zustand).
         if r["id"] not in ZUORDNUNG:
-            print(f"OHNE ZUORDNUNG in der Tabelle: {r['id']} — ergaenzen, nicht raten.")
+            print(f"OHNE ZUORDNUNG in der Tabelle: {r['id']}, ergaenzen, nicht raten.")
             fehler += 1
             continue
         kanal, prio, cooldown, keys = ZUORDNUNG[r["id"]]

@@ -89,7 +89,7 @@ def _render_hint(rule: Rule, trigger_event: Event | None = None) -> str:
     handlungsfaehig machen. Der Renderer war da (tool_runner), nur nicht verdrahtet.
 
     Nebenwirkung, die genauso zaehlt: das LLM bekommt den Hint als Kontext. Ohne
-    Werte hat es sie erfunden ('Der Service node1 ist fehlgeschlagen' — node1 ist
+    Werte hat es sie erfunden ('Der Service node1 ist fehlgeschlagen'), node1 ist
     ein Host, keine Unit; vgl. feedback_no_hallucination).
     """
     hint = rule.triage.get("hint", "")
@@ -108,7 +108,7 @@ def _render_hint(rule: Rule, trigger_event: Event | None = None) -> str:
     try:
         return tool_runner._render(hint, {"event": {"payload": payload}})  # noqa: SLF001
     except Exception as exc:
-        # Ein kaputter Platzhalter darf die Meldung nicht verschlucken —
+        # Ein kaputter Platzhalter darf die Meldung nicht verschlucken,
         # lieber der Rohtext als gar kein Alarm.
         log.warning("hint.render_failed", rule_id=rule.id, error=str(exc))
         return hint
@@ -116,7 +116,7 @@ def _render_hint(rule: Rule, trigger_event: Event | None = None) -> str:
 
 # ntfy-Prioritaeten: 5=max (Klingelton bricht durch), 4=high, 3=default, 2=low, 1=min.
 # Bis 2026-08-23 waren nur high/critical gemappt und alles darunter wurde gar nicht
-# zugestellt — 11 Regeln mit gesetztem Topic (u.a. ssh-login-notify und saemtliche
+# zugestellt: 11 Regeln mit gesetztem Topic (u.a. ssh-login-notify und saemtliche
 # Entwarnungen) liefen deshalb still ins Leere.
 _NTFY_PRIORITY = {"critical": "5", "high": "4", "normal": "3", "medium": "3", "low": "2"}
 
@@ -219,10 +219,10 @@ async def run_reasoning(
     diag_block = diagnose.to_prompt_block(diag_results)
 
     # Der stumme Kanal bekommt keine KI-Deutung. Eine Entwarnung
-    # ("Unit X laeuft wieder") hat nichts zu deuten — das Modell haengt dann nur
+    # ("Unit X laeuft wieder") hat nichts zu deuten, das Modell haengt dann nur
     # eine erfundene Ursache an eine gute Nachricht. Gemessen: allein
     # systemd-unit-recovered lief 49x in 3,8 Tagen durch ein LLM, Median 28 s.
-    # Der Rest der Kaskade (Diagnose, Decide, Aktion) laeuft weiter — hier faellt
+    # Der Rest der Kaskade (Diagnose, Decide, Aktion) laeuft weiter, hier faellt
     # ausschliesslich die Erzaehlung weg.
     if _priority_rank(_effective_ntfy(rule).get("priority", "")) <= _priority_rank("low"):
         result: dict[str, Any] = {"text": "", "source": "uebersprungen", "elapsed_ms": 0}
@@ -259,7 +259,7 @@ async def run_reasoning(
 
     # Zustellung: ntfy traegt alles mit gesetztem Topic (die drei Kanaele
     # host-critical/-warn/-info trennen die Dringlichkeit), Discord nur ab high.
-    # Beide Clients sind fail-silent — keiner blockiert den anderen.
+    # Beide Clients sind fail-silent: keiner blockiert den anderen.
     effective = _effective_ntfy(rule)
     priority = effective.get("priority", "")
     rank = _priority_rank(priority)
@@ -275,7 +275,7 @@ async def run_reasoning(
             body_parts.append("\nEinschaetzung (KI): " + reasoning_text)
         meta = f"Events: {len(rule.events)}, Quelle: {result.get('source')}"
         if rule.suppressed_at_last_fire:
-            # Der Cooldown verschluckt Wiederholungen — aber nicht spurlos.
+            # Der Cooldown verschluckt Wiederholungen, aber nicht spurlos.
             # Ohne diese Zeile sieht eine gedaempfte Dauerstoerung aus wie ein Einzelfall.
             meta += f", +{rule.suppressed_at_last_fire} gleichartige unterdrueckt"
         body_parts.append(f"\n_{meta}_")
@@ -290,7 +290,7 @@ async def run_reasoning(
                 priority=priority,
             )
 
-    # IRC bekommt ALLES — auch das, was weder ein Topic hat noch die Discord-Schwelle
+    # IRC bekommt ALLES, auch das, was weder ein Topic hat noch die Discord-Schwelle
     # reisst. Das ist der Punkt des Kanals: er draengelt nicht, also kostet
     # Vollstaendigkeit dort nichts. Was hier fehlt, fehlt spaeter beim Nachlesen.
     # Eine Zeile statt eines Blocks, weil IRC zeilenweise gelesen wird.

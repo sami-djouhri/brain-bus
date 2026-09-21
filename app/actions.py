@@ -19,7 +19,7 @@ log = get_logger(__name__)
 def recent_auto_retry(*, tool: str, service_key: str, within_s: int = 1800) -> bool:
     """Attempt-Cap: True, wenn `tool` in den letzten within_s Sekunden bereits
     auto-getriggert (source=auto) fuer denselben service_key lief. Verhindert
-    Auto-Retry-Endlosschleifen — nach dem ersten Auto-Versuch eskaliert der
+    Auto-Retry-Endlosschleifen, nach dem ersten Auto-Versuch eskaliert der
     naechste Fehler zum Confirm-Button."""
     if not service_key:
         return False
@@ -85,7 +85,7 @@ def _persist_decision(
     decisions-Tabelle. Dieselbe Redaktion wie die actions-Warum-Spur. Fail-soft: ein
     Persist-Fehler darf den Dispatch niemals brechen (Robustheit vor Vollständigkeit)."""
     try:
-        reasoning = audit._redact(  # noqa: SLF001 — bewusst geteilte Redaktion
+        reasoning = audit._redact(  # noqa: SLF001, bewusst geteilte Redaktion
             (
                 (decision.get("summary") or "").strip()
                 + "\n\n"
@@ -109,7 +109,7 @@ def _persist_decision(
         })
         cutoff = (datetime.now(timezone.utc) - timedelta(days=_DECISION_RETENTION_DAYS)).isoformat()
         db.prune_decisions(cutoff)
-    except Exception as exc:  # pragma: no cover — Selbstheilungs-Pfad darf nicht brechen
+    except Exception as exc:  # pragma: no cover, Selbstheilungs-Pfad darf nicht brechen
         log.warning("decision.persist_failed", rule_id=rule_id, outcome=outcome, error=str(exc))
 
 
@@ -172,7 +172,7 @@ async def dispatch(
 ) -> dict[str, Any]:
     """
     action_spec: {tool: str, args: dict, risk?: str (override), confidence_threshold?: int}
-    decision: optional output of decide.judge() — {recommend_action, confidence, reason}
+    decision: optional output of decide.judge(): {recommend_action, confidence, reason}
     """
     if not action_spec:
         return {"result": DispatchResult.SKIPPED_NO_ACTION}
@@ -348,7 +348,7 @@ async def _execute(
 
     audit_record = {**row, "decision_by": decision_by or source}
     audit.publish_mqtt(audit_record)
-    # Memory async — non-blocking
+    # Memory async: non-blocking
     import asyncio
     asyncio.create_task(audit.write_memory(audit_record))
 

@@ -78,7 +78,7 @@ def _lauf(
     """Faehrt den echten Zustellpfad, aber ohne MQTT-Broker und Aktions-Dispatch.
 
     Beides ist hier nicht der Pruefgegenstand und wuerde den Test an einen
-    laufenden Broker binden — dann misst er die Umgebung statt den Code.
+    laufenden Broker binden, dann misst er die Umgebung statt den Code.
     """
     notify, ntfy = FakeNotify(), FakeNtfy()
     with (
@@ -111,7 +111,7 @@ class HintRendern(unittest.TestCase):
         self.assertEqual(pipeline._render_hint(regel), "Kernservice ist down.")
 
     def test_fehlendes_feld_wird_leer_statt_woertlich(self):
-        """Ein fehlender Wert darf keinen Platzhalter durchlassen — sonst steht
+        """Ein fehlender Wert darf keinen Platzhalter durchlassen, sonst steht
         die Vorlage wieder in der Meldung und sieht aus wie ein Messwert."""
         regel = _regel(
             prioritaet="normal",
@@ -180,7 +180,7 @@ class KanalWahl(unittest.TestCase):
 class PrioritaetsAbbildung(unittest.TestCase):
     def test_jede_stufe_ist_abgebildet(self):
         """Fehlt eine Stufe, geht die Meldung ohne X-Priority raus und klingt
-        am Handy wie jede andere — die Kanaltrennung waere dann kosmetisch."""
+        am Handy wie jede andere, die Kanaltrennung waere dann kosmetisch."""
         for stufe, erwartet in [
             ("critical", "5"),
             ("high", "4"),
@@ -246,7 +246,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
 
     def test_uebersprungen_ist_als_quelle_erkennbar(self):
         """Im Verlauf muss unterscheidbar bleiben, ob das Modell schwieg oder
-        gar nicht gefragt wurde — sonst sieht Sparen aus wie ein Ausfall."""
+        gar nicht gefragt wurde, sonst sieht Sparen aus wie ein Ausfall."""
         regel = _regel(prioritaet="low", topic="host-info", hint="Alles gut.")
         _, ntfy = _lauf(regel, llm=FakeLLM(""))
         self.assertIn("Quelle: uebersprungen", ntfy.aufrufe[0]["message"])

@@ -182,7 +182,7 @@ class MemoryWarumSpurTests(unittest.TestCase):
 class DecisionsAgainstActingTests(unittest.TestCase):
     """V1 „Gläserne Autonomie" (2. Schritt): das System persistiert auch
     Entscheidungen GEGEN Handeln (recommend_action=False / unter Confidence-
-    Schwelle) — in die separate decisions-Tabelle, damit „warum hat es NICHT
+    Schwelle), in die separate decisions-Tabelle, damit „warum hat es NICHT
     eingegriffen?" beantwortbar wird. Ohne UNIQUE(rule_id,fingerprint)-Kollision
     mit einer späteren echten actions-Ausführung."""
 
@@ -226,7 +226,7 @@ class DecisionsAgainstActingTests(unittest.TestCase):
             "summary": "Dienst wackelt nur kurz",
             "recommend_action": False,
             "confidence": 70,
-            "reason_for_decision": "Flapping, kein harter Ausfall — Restart waere voreilig",
+            "reason_for_decision": "Flapping, kein harter Ausfall: Restart waere voreilig",
             "llm_source": "gemma-node2",
         }
         result = asyncio.run(actions.dispatch(

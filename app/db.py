@@ -1,4 +1,4 @@
-"""SQLite-Init + kleine Helpers — kein ORM."""
+"""SQLite-Init + kleine Helpers, kein ORM."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS actions (
 -- bisher nur transient geloggt. Diese Tabelle macht die „warum NICHT?"-Spur
 -- durchsuchbar. Bewusst SEPARAT von actions: dort würde UNIQUE(rule_id,
 -- fingerprint) mit einer späteren echten Ausführung derselben Regel kollidieren.
--- Kein UNIQUE — jede bewusste Nicht-Aktion ist ein eigenes Entscheidungs-Ereignis.
+-- Kein UNIQUE: jede bewusste Nicht-Aktion ist ein eigenes Entscheidungs-Ereignis.
 CREATE TABLE IF NOT EXISTS decisions (
     id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
@@ -79,7 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_decisions_created ON decisions(created_at DESC);
 
 # V1 „Gläserne Autonomie": additive Spalten für die Warum-Spur einer autonomen
 # Aktion. Bestehende DBs (CREATE ... IF NOT EXISTS greift dort nicht) bekommen sie
-# per idempotentem ALTER — reine ADD COLUMN, schreibt keine Daten um.
+# per idempotentem ALTER: reine ADD COLUMN, schreibt keine Daten um.
 _ACTION_COLUMN_MIGRATIONS: list[tuple[str, str]] = [
     ("decision_confidence", "INTEGER"),
     ("decision_reasoning", "TEXT"),
@@ -112,7 +112,7 @@ def init(path: Path) -> None:
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     if _db_path is None:
-        raise RuntimeError("db not initialized — call db.init() first")
+        raise RuntimeError("db not initialized: call db.init() first")
     conn = sqlite3.connect(str(_db_path), timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -143,7 +143,7 @@ def update_action(action_id: str, fields: dict[str, Any]) -> None:
 def insert_decision(row: dict[str, Any]) -> None:
     """Persistiert eine Entscheidung-gegen-Handeln (V1 „Gläserne Autonomie").
     Reiner INSERT (kein OR IGNORE): jede bewusste Nicht-Aktion ist ein eigenes
-    Ereignis — Dedup wäre hier falsch."""
+    Ereignis: Dedup wäre hier falsch."""
     cols = ",".join(row.keys())
     placeholders = ",".join("?" * len(row))
     sql = f"INSERT INTO decisions ({cols}) VALUES ({placeholders})"
