@@ -63,5 +63,5 @@ a fairly complete map of the fleet. That file and everything like it gets stripp
 by the publishing script, which also rewrites internal addresses to placeholders
 and refuses to push while either of two secret scanners is unhappy.
 
-One commit, because the history stays private. The engine runs at home and is
-maintained there.
+The development history stays private, so the public one starts at the first
+release and grows from there. The engine runs at home and is maintained there.
