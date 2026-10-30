@@ -1,0 +1,28 @@
+services:
+  brain-bus:
+    build: .
+    image: "homelab/brain-bus:${BRAIN_BUS_IMAGE_TAG:-2026.06.04}"
+    container_name: brain-bus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8112:8000"
+    environment:
+      SERVICE_NAME: brain-bus
+      ENV: prod
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      AUTH_REQUIRED: "true"
+      LOG_LEVEL: INFO
+    networks:
+      - homelab
+    depends_on:
+      - mosquitto
+    labels:
+      homelab.service: "brain-bus"
+      homelab.category: "eigenbau"
+      homelab.route: "/brain-bus/"
+
+networks:
+  homelab:
+    external: true
+    name: homelab
