@@ -1,6 +1,6 @@
 fastapi==0.115.5
 uvicorn[standard]==0.54.0
-pydantic==2.13.5
+pydantic==2.14.1
 pydantic-settings==2.15.0
 structlog==26.1.0
 httpx==0.28.1
