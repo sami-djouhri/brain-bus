@@ -53,8 +53,12 @@ async def run_for_rule(
     diagnose_specs: list[dict[str, Any]],
     event_payload: dict[str, Any],
     *,
-    per_tool_timeout: float = 5.0,
-    overall_timeout: float = 10.0,
+    # 20/25 s statt 5/10: memory.recall braucht meist unter 1 s, bis 38 s, wenn
+    # obsidian-memory gerade viel Neutext einbettet und dabei seine Sperre haelt
+    # (gemessen 03.11.; ai-embed und ai-llm teilen keine Kerne). Die Diagnose
+    # sitzt vor einer Meldung, die ohnehin ueber Minuten gesammelt wird.
+    per_tool_timeout: float = 20.0,
+    overall_timeout: float = 25.0,
 ) -> dict[str, dict[str, Any]]:
     """Führt alle diagnose tools parallel aus, fail-silent."""
     if not diagnose_specs:

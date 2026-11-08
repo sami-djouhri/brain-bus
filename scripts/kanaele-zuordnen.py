@@ -101,7 +101,9 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Beide Regeln lagen in alerts.rules.yml ohne Gegenstelle hier und meldeten
     # damit nirgendwohin. Cooldown je Kachel bzw. je Wirt, nicht regel-global.
     "launchpad-verweis-tot":             ("warn",     "normal", 86400,  ["titel"]),
-    # --- finanzen (2026-09-26): die drei vom Owner gewaehlten Meldungen ---
+    # Nachgezogen 2026-11-01, der Meldeweg-Abgleich fand die Regel ohne Weg.
+    "launchpad-kachel-fehler-im-browser": ("warn",    "normal", 86400,  ["labels.id"]),
+    # --- finanzen (2026-09-26): die drei ausgewaehlten Meldungen ---
     # Keine davon weckt. Der Reisspunkt liegt per Vorgabe 60 Tage weg, ein
     # gerissenes Budget ist am naechsten Morgen genauso gerissen, und ein alter
     # Kurs macht die Anzeige veraltet und nicht falsch. Was hier nachts klingelte,
@@ -242,6 +244,12 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # 7 Tage: der Grund ist ein Owner-Handgriff (Tresor-Kennwort), und taeglich
     # an etwas zu erinnern, das man selbst nicht erledigen kann, stumpft ab.
     "backup-position-lange-uebersprungen": ("warn",    "normal", 604800, ["position"]),
+    "kronjuwelen-haus-fehlgeschlagen":    ("warn",     "normal", 43200, ["host"]),
+    "kronjuwelen-haus-veraltet":          ("warn",     "normal", 43200, ["host"]),
+    "kronjuwelen-haus-metrik-fehlt":      ("warn",     "normal", 43200, ["host"]),
+    # 1 h: die Abhilfe ist ein Handgriff am selben Abend, ein Stillstand ueber
+    # Stunden soll sich wieder melden.
+    "agenten-deckel-bremst":              ("warn",     "normal", 3600,  ["host"]),
     "backup-position-nie-erfolgreich":    ("warn",     "normal", 86400, []),
     "backup-positions-messung-steht":     ("warn",     "normal", 43200, []),
     # Taeglich je Entitaet und nicht alle 6 h: die Behebung ist ein Griff am
@@ -261,6 +269,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Ohne key_fields: es gibt genau ein Lager auf genau einem Wirt.
     "lager-messkette-weg":               ("warn",     "normal", 21600,  []),
     "lager-messwerte-nicht-lesbar":      ("warn",     "normal", 21600,  []),
+    "medien-vault-noch-kein-melder":     ("info",     "low",    604800, []),
     "lager-seit-lange-ohne-buchung":     ("info",     "low",    604800, []),
     "lager-bestand-ueberwiegend-abgelaufen": ("info",  "low",    604800, []),
     # info und wochenweise: eine offene Eintragung ist kein Ausfall.
@@ -343,6 +352,31 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "jellyfin-portlock-fehlt":           ("critical", "high",   1800,  ["host"]),
     "jellyfin-portlock-ungeprueft":      ("info",     "low",    86400, ["host"]),
     "jellyfin-wache-befund-ohne-regel":  ("info",     "low",    604800, ["host"]),
+    # Ausgangssperre (2026-11-01): ein abgewiesener Versuch nach draussen
+    # ist ein Sicherheitsbefund wie der Port-Lock, beide wecken. Offene Abrufer
+    # allein sind warn, weil die Sperre davor steht.
+    "jellyfin-will-nach-draussen":       ("critical", "high",   3600,  ["host"]),
+    "jellyfin-ausgangssperre-fehlt":     ("critical", "high",   1800,  ["host"]),
+    "jellyfin-online-abrufer-an":        ("warn",     "normal", 86400, ["instanz"]),
+    # --- Navidrome gegen den Musik-Vault (Meldeweg nachgezogen 2026-11-02) ---
+    # Gleiche Einstufung wie Jellyfin: Port-Lock, Ausgangssperre und ein
+    # abgewiesener Versuch nach draussen wecken, der Rest ist warn/info.
+    # Schluessel host, weil es nur eine Instanz gibt.
+    "navidrome-vault-offen-dienst-aus":  ("warn",     "normal", 21600, ["host"]),
+    "navidrome-vault-nicht-lesbar":      ("warn",     "normal", 21600, ["host"]),
+    "navidrome-portlock-fehlt":          ("critical", "high",   1800,  ["host"]),
+    "navidrome-will-nach-draussen":      ("critical", "high",   3600,  ["host"]),
+    "navidrome-ausgangssperre-fehlt":    ("critical", "high",   1800,  ["host"]),
+    "navidrome-externe-dienste-an":      ("warn",     "normal", 86400, ["host"]),
+    "navidrome-wache-befund-ohne-regel": ("info",     "low",    604800, ["host"]),
+    # Saganta-Konto-Wache (2026-11-08): Befunde fuer morgen, keiner weckt.
+    "saganta-mandant-ohne-konto":        ("info",     "low",    604800, ["dienst"]),
+    "saganta-loeschweg-luecke":          ("warn",     "normal", 86400,  []),
+    "saganta-konto-wache-dienst-fehlt":  ("info",     "low",    604800, []),
+    "briefkasten-tresor-zu":             ("warn",     "normal", 604800, []),
+    "log-nachtdigest":                   ("info",     "low",    72000,  []),
+    "bot-fehler-im-log":                 ("warn",     "normal", 21600,  ["bot"]),
+    "bot-warnungen-haeufen":             ("warn",     "normal", 86400,  ["bot"]),
     # --- Backup-Abdeckung (neu 2026-10-04) ---
     #
     # Die Luecke steht auf `warn`/`high` und nicht auf `critical`, obwohl es um
@@ -376,6 +410,8 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Vorwarnstufen: richtige Reaktion ist "heute ansehen", nicht aufstehen.
     "jetson-temp-high":                  ("warn",     "normal", 7200,  ["host"]),
     "cpu-temp-warning":                  ("warn",     "normal", 7200,  ["host"]),
+    # Waechter der Temperaturregeln: ohne Messwert sind sie stumm, kaputt ist nichts.
+    "host-temperatur-unbekannt":         ("warn",     "normal", 21600, ["host"]),
     "wireguard-degraded":                ("warn",     "normal", 3600,  ["host"]),
     "capacity-pressure":                 ("warn",     "normal", 7200,  ["host"]),
     "cert-expiry-soon":                  ("warn",     "normal", 86400, ["domain"]),
@@ -386,8 +422,16 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "swap-thrashing":                    ("warn",     "high",   7200,  ["host"]),
     "load-saturated":                    ("warn",     "normal", 10800, ["host"]),
     "disk-fill-predicted":               ("warn",     "normal", 21600, ["host", "service"]),
-    "memory-leak-suspected":             ("warn",     "normal", 21600, ["host", "container"]),
-    "container-oom-predicted":           ("warn",     "normal", 21600, ["host", "container"]),
+    # Beide standen hier bis zum 2026-11-04 auf ["host", "container"], waehrend
+    # rules.yaml seit 7f067f2/70c192b (03./04.11.) die korrigierten Felder trug.
+    # Ein Lauf dieses Skripts haette die Korrektur still zurueckgedreht.
+    # cAdvisor nennt den Container im Label `name`, nicht `container`: mit
+    # [host, container] teilten sich alle Container eines Wirts einen
+    # Schluessel, ai-llm und ai-llm-slow auf node2 feuerten am selben Tag, der
+    # zweite verschwand in der Abkuehlzeit des ersten. memory-leak-suspected ist
+    # ein Host-Befund (Container-Lecks meldet container-oom-predicted).
+    "memory-leak-suspected":             ("warn",     "normal", 21600, ["labels.host"]),
+    "container-oom-predicted":           ("warn",     "normal", 21600, ["labels.host", "labels.name"]),
     "herb-chat-upstream-down-sustained": ("warn",     "normal", 1800,  []),
     "ha-sync-failures-streak":           ("warn",     "normal", 7200,  ["host"]),
     # Schluessel ist die ZONE, nicht der Container, und das ist der ganze
@@ -435,7 +479,17 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "service-readiness-degraded":        ("warn",     "normal", 3600,  ["host", "container"]),
     "mem-highwater":                     ("warn",     "normal", 3600,  ["host", "container"]),
     "mem-restart":                       ("warn",     "normal", 3600,  ["host", "container"]),
-    "image-cve-alert":                   ("warn",     "normal", 86400, ["host", "image"]),
+    # Eine Meldung je Lauf und Art (2026-11-01). 1 h statt 24 h: scan.py meldet
+    # ohnehin nur NEUE CVE-IDs und vermerkt sie nach Zustellung als gemeldet; eine
+    # lange Abkuehlung wuerde einen zweiten Lauf am selben Tag (Neubau von Hand)
+    # verschlucken, den der Scanner als zugestellt verbucht, der Befund waere weg.
+    # [host, kind] statt [host, image]: scan.py schickt EINE Meldung je Lauf, nach
+    # CVE gebuendelt (vorher ein Push je Image, elf in einer Minute fuer eine CVE).
+    # Auf demselben Topic meldet sammeln.py die Fremdwirte mit kind
+    # cve-critical-fremdwirt bzw. cve-scan-veraltet; beide Arten je Wirt duerfen
+    # sich nicht gegenseitig wegkuehlen. (Bis 2026-11-04 stand das in rules.yaml
+    # ueber cooldown_seconds, wo jeder Lauf dieses Skripts es loescht.)
+    "image-cve-alert":                   ("warn",     "normal", 3600,  ["host", "kind"]),
     "node18-orchestrator-failed":        ("warn",     "normal", 3600,  []),
     # Spielserver auf gamehost. Bewusst NICHT critical: niemand muss um 3 Uhr aufstehen,
     # weil ein Spiel nicht erreichbar ist, die richtige Reaktion ist "morgen ansehen".
@@ -492,9 +546,9 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # einzige Alarm, der einen Ausfall von host noch melden koennte, und sie
     # hatte bis zum 2026-09-17 keinen Meldeweg.
     "beobachter2-meldeweg-tot":          ("critical", "high",   21600, ["host"]),
-    # Grafana hat eine SMART-Regel, sie fragt aber smartmon_device_smart_healthy
-    # ab und sieht damit nur die drei x86-Nodes. Die NVMe von node1 und node2
-    # haengt an node_smart_healthy und war ohne diesen Eintrag ungedeckt.
+    # Bis 2026-11-07 fragte Grafana smartmon_device_smart_healthy ab und sah nur
+    # die drei x86-Nodes; die NVMe von node1 und node2 war ohne diesen Eintrag
+    # ungedeckt. Heute liest Grafana node_smart_healthy, das hier ist der ntfy-Weg.
     "datentraeger-smart-defekt":         ("critical", "high",   21600, ["host", "disk"]),
     "datentraeger-reserve-erschoepft":   ("critical", "high",   21600, ["host", "disk"]),
     # Bewusst warn trotz severity critical: bei 95 Prozent verbrauchter
@@ -557,13 +611,11 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # 12 h Cooldown je Geraet, gleiche Begruendung wie bei den Spielen: ein Geraet, das
     # weg ist, bleibt weg, bis jemand hingeht. Haeufiger erinnern hiesse nur Laerm --
     # und Laerm ist genau das, was diesen Waechter am Ende wieder stummschalten wuerde.
-    "tapo-steckdose-weg":                ("warn",     "normal", 43200, ["geraet"]),
     # Die Summe (2026-10-15): nicht "ein Geraet fehlt", sondern "der Bestand
     # ist weg". Wochen-Cooldown statt der 43200 darueber, weil der Zustand sich
     # bis zur Entscheidung nicht aendert -- dieselbe Ueberlegung wie bei
     # `zigbee-ausnahme-wirkungslos` weiter unten. Ohne Schluessel, denn der
     # Ausdruck aggregiert ueber den ganzen Job und traegt kein geraet-Label.
-    "tapo-geraeteklasse-komplett-weg":   ("warn",     "normal", 604800, []),
     # Nachgezogen 2026-09-19: die Gruppe homelab-beobachtungsguete, also die
     # Ebene, die das Stummwerden anderer finden soll, war selbst vollstaendig
     # stumm. Alle neun Regeln feuerten in Prometheus ohne jeden Meldeweg.
@@ -655,7 +707,6 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "game-server-uptodate":              ("info",     "low",    86400, ["spiel"]),
     # Eine Lampe rechtfertigt keine Unterbrechung. Stumm, aber nachschlagbar --
     # der Unterschied zur Steckdose ist, dass "aus" hier ein gueltiger Zustand ist.
-    "tapo-leuchtmittel-weg":             ("info",     "low",    86400, ["geraet"]),
     # Die drei stummen der Beobachtungsguete-Gruppe (2026-09-19). Merklisten,
     # keine Stoerungen: ein nie aktivierter Timer und eine Regel ohne Subjekt
     # sind meist die richtige Folge einer bewussten Entscheidung. Unsichtbar
@@ -845,7 +896,6 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "vaultwarden-cert-probe-fehlt":      ("warn",     "normal", 43200,  []),
     # Der einzige auf dem stummen Kanal: severity info, und der Inhalt ist eine
     # Entwarnung mit einer Aufgabe dahinter, kein Vorfall.
-    "tapo-geraet-zurueck":               ("info",     "low",    43200,  ["geraet"]),
 
     # ── Der Pruefer der Meldewege meldet jetzt selbst (2026-10-02) ────────
     # Die critical-Variante weckt, und zwar als einzige dieser Runde: sie
@@ -894,6 +944,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # bis jemand ihn korrigiert, und taeglich daran erinnert zu werden stumpft
     # den Kanal ab, ohne den Befund zu aendern.
     "zigbee-ausnahme-wirkungslos":       ("info",   "low",    604800, []),
+    "zigbee-ableitung-wirkungslos":      ("info",   "low",    604800, []),
     # Netzzustand statt Einzelgeraet (2026-10-15, Regeln aus einer parallelen
     # Sitzung, Meldeweg hier nachgezogen). `high` wie bei den uebrigen
     # Zigbee-Wegen, damit es auf Discord ankommt: an diesen Geraeten haengt die
@@ -948,6 +999,9 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "karten-rohdaten-verbraucher-abweichend": ("warn", "normal", 21600, []),
     "karten-satz-nicht-ausgeliefert": ("warn", "normal", 21600, []),
     "karten-wache-kann-nicht-messen": ("warn", "normal", 21600, []),
+    "karten-fahrplan-laeuft-ab": ("warn", "normal", 21600, []),
+    "karten-otp-fahrplan-laeuft-ab": ("warn", "normal", 21600, []),
+    "karten-verbindungssuche-findet-nichts": ("warn", "normal", 21600, []),
     "karten-spur-keine-neuen-fahrten": ("warn", "normal", 21600, []),
     "karten-spur-matching-quote-niedrig": ("warn", "normal", 21600, []),
     "karten-spur-matching-staut": ("warn", "normal", 21600, []),
@@ -970,6 +1024,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "medien-abgleich-veraltet": ("warn", "normal", 21600, []),
     "medien-vault-bericht-veraltet": ("warn", "normal", 21600, ["wirt"]),
     "medien-vault-kein-wirt": ("warn", "normal", 21600, []),
+    "medien-lager-spiegel-veraltet": ("warn", "normal", 21600, []),
     "portal-sagt-etwas-falsches": ("warn", "normal", 21600, []),
     "portal-selbstpruefung-leer": ("warn", "normal", 21600, []),
     # Patchstand der selbst gebauten Images (Gruppe homelab-haertung, neu am
@@ -987,6 +1042,26 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "haertung-wirt-nicht-erreicht": ("warn", "normal", 86400, ["wirt"]),
     "haertung-messung-leer": ("warn", "normal", 86400, []),
     "haertung-frist-abweichend": ("warn", "normal", 86400, []),
+    # Uhrzeit (ZIELBILD 58, 2026-11-04). Auch die kritische Stufe weckt nicht:
+    # 5 s Abweichung brechen Kerberos im AD-Lab (on-demand) und machen Zeitreihen
+    # ungenau, aber nichts davon rechtfertigt ein Aufstehen um 3 Uhr. high, weil
+    # ab 5 s Anmeldungen scheitern. Je Wirt, damit ein zweiter Wirt nicht im
+    # Cooldown des ersten verschwindet.
+    "uhrzeit-abweichung":                ("warn",     "normal", 43200, ["host"]),
+    "uhrzeit-abweichung-kritisch":       ("warn",     "high",   7200,  ["host"]),
+    # Design-Waechter (2026-11-02): Befund im ausgelieferten Stand, verschwindet
+    # nicht von selbst, Waechter laeuft taeglich. Je Pruefung ein Subjekt.
+    "design-quelle-weicht-ab":           ("warn",     "normal", 86400, ["pruefung"]),
+    # GitHub-DR-Spiegel (ZIELBILD 11, 2026-11-04): Befund statt roter Unit.
+    # Taeglicher Lauf, ein Tag Abkuehlung genuegt; kein Subjekt (ein Spiegel).
+    "github-mirror-unbewertet":          ("warn",     "normal", 86400, []),
+    "github-mirror-misst-nicht":         ("warn",     "normal", 86400, []),
+    # Jellyfin NFO-Weg (ZIELBILD 55, 2026-11-05). Titel ohne Kennung ist
+    # Nachschlagen, kein Ausfall: stumm, einmal am Tag je Bereich und Art.
+    "jellyfin-titel-ohne-kennung":       ("info",     "low",    86400, ["bereich", "art"]),
+    "jellyfin-nfo-laeuft-nicht":         ("warn",     "normal", 21600, ["bereich"]),
+    "testfragen-quote-gefallen":         ("warn",     "normal", 604800, []),
+    "nachtbericht":                      ("warn",     "normal", 43200, []),
 }
 
 TOPIC = {"critical": "host-critical", "warn": "host-warn", "info": "host-info"}

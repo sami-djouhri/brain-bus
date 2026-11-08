@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from app import actions, decide, diagnose, tool_runner
+from app import actions, decide, diagnose, tool_runner, verlauf
 from app.llm_client import LLMClient
 from app.logging_config import get_logger
 from app.mqtt import publisher
@@ -217,6 +217,9 @@ async def run_reasoning(
         rule.diagnose, last_event_payload
     )
     diag_block = diagnose.to_prompt_block(diag_results)
+    # Stufe 4 (ZIELBILD 67): kritische Alarme bringen ihren Verlauf aus der
+    # Chronik mit. Gemessen, nicht gedeutet; leer bei allem anderen.
+    verlauf_zeile = await verlauf.fuer_ereignis(event.topic, event.payload or {}) if event else ""
 
     # Der stumme Kanal bekommt keine KI-Deutung. Eine Entwarnung
     # ("Unit X laeuft wieder") hat nichts zu deuten, das Modell haengt dann nur
@@ -278,6 +281,8 @@ async def run_reasoning(
         hint = _render_hint(rule, event)
         title = f"Homelab: {rule.id}"
         body_parts = [hint] if hint else []
+        if verlauf_zeile:
+            body_parts.append("\n" + verlauf_zeile)
         if reasoning_text:
             # Als Einschaetzung kennzeichnen: der Text stammt vom LLM und stand
             # bisher ununterscheidbar neben den Messwerten. Wer nachts aufs Handy

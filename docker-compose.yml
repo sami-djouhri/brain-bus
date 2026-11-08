@@ -28,9 +28,11 @@ services:
       BRAIN_RULES_PATH: /app/config/rules.yaml
       JUNIOR_NOTIFY_URL: http://host-junior:8765/notify
       NTFY_URL: http://ntfy
-      # Dritter Meldeweg: der interne IRC-Server auf node1 (irc-posten). Bekommt
-      # bewusst ALLE Meldungen, auch die, die fuer einen Push zu leise sind.
-      IRC_POSTEN_URL: http://192.0.2.10:8149
+      # Dritter Meldeweg: der interne IRC-Server auf node1 (irc-posten). Seit
+      # 2026-11-04 auf Eis (Owner: ntfy und Tardis reichen). Leere URL = Weg aus,
+      # siehe app/config.py. Rueckweg: Adresse http://192.0.2.10:8149 wieder
+      # eintragen, nachdem homelab-irc auf node1 laeuft.
+      IRC_POSTEN_URL: ""
       IRC_POSTEN_TOKEN_FILE: /run/secrets/irc_posten_token
       NTFY_DEFAULT_TOPIC: host-critical
       OBSIDIAN_URL: http://192.0.2.10:8765
