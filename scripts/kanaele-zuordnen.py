@@ -39,17 +39,10 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "backup-run-failed":                 ("critical", "high",   3600,  ["host"]),
     "dns-stack-degraded":                ("critical", "high",   1800,  ["host"]),
     "disk-warning":                      ("critical", "high",   7200,  ["host"]),
-    # Temperatur weckt nur im kritischen Fall: ab dort drosselt die Hardware selbst
-    # und die naechste Stufe ist Abschaltung. Der jetson steht hier, weil sein Luefter
-    # seit 2026-08-30 abgeschaltet ist und nur der Kuehlkoerper traegt.
-    "jetson-temp-critical":              ("critical", "high",   1800,  ["host"]),
-    "cpu-temp-critical":                 ("critical", "high",   1800,  ["host"]),
     "service-flapping":                  ("critical", "high",   3600,  ["host", "service"]),
     "host-memory-critical":              ("critical", "high",   3600,  ["host"]),
-    "authelia-brute-force":              ("critical", "high",   1800,  ["host"]),
-    # Gitea-Anmeldewache (2026-10-06). Gleiche Einstufung wie authelia-brute-force
-    # eine Zeile hoeher, und aus demselben Grund: Gitea kennt keine Konto-Sperre
-    # nach Fehlversuchen, hier macht nichts von selbst zu. Alle drei ohne
+    # Gitea-Anmeldewache (2026-10-06). Critical, weil Gitea keine Konto-Sperre
+    # nach Fehlversuchen kennt, hier macht nichts von selbst zu. Ohne
     # Schluessel, es gibt eine Instanz und der Sturm-Ausdruck summiert.
     "gitea-anmeldung-sturm":             ("critical", "high",   1800,  []),
     "target-down":                       ("critical", "high",   3600,  ["host", "service"]),
@@ -71,6 +64,14 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # unhealthy, ohne dass jemand es erfuhr, und die Ursache war ein
     # Healthcheck auf einen abgeschalteten Port. Genau dafuer ist warn richtig.
     "container-unhealthy":               ("warn",     "normal", 21600, ["host", "name"]),
+    # Auffangregel (ZIELBILD 99). Der Kanal hier ist nur der Rueckfall fuer einen
+    # Alarm ohne severity; im Betrieb waehlt pipeline.py ihn je Alarm aus severity
+    # oder Annotation `kanal`, die Ruhezeit aus Annotation `ruhezeit`.
+    # Bibliothek-Einwurf auf node1 (2026-11-14): jede Meldung ist ein eigener
+    # Einwurf, daher ohne Cooldown; eingelesen stumm, abgelehnt leise.
+    "bibliothek-einwurf-eingelesen":     ("info",     "low",    0,     []),
+    "bibliothek-einwurf-abgelehnt":      ("warn",     "normal", 0,     []),
+    "alarm-auffang":                     ("warn",     "normal", 21600, ["fingerprint"]),
     # Die DR-Luecke, die sich 2026-08-23 still selbst kleingerechnet hat.
     "backup-completeness-degraded":      ("critical", "high",   21600, ["host"]),
     "restore-drill-failed":              ("critical", "high",   21600, ["host"]),
@@ -93,16 +94,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # jeden zweiten Tag verschlucken. Keine key_fields, weil es EINE Liste fuer
     # den ganzen Bestand ist und kein Befund je Subjekt.
     "offene-befunde-wiedervorlage":      ("warn",     "normal", 72000, []),
-    # Laengster Cooldown im Regelwerk (7 Tage): ein 30 Tage alter Befund
-    # braucht keine Erinnerung, sondern eine Entscheidung. Taegliches
-    # Nachhaken wuerde ihn nur zuverlaessig unsichtbar machen.
-    "befund-zur-entscheidung":           ("warn",     "normal", 604800, []),
     # --- Startseite (nachgezogen 2026-09-20) ---
-    # Beide Regeln lagen in alerts.rules.yml ohne Gegenstelle hier und meldeten
-    # damit nirgendwohin. Cooldown je Kachel bzw. je Wirt, nicht regel-global.
-    "launchpad-verweis-tot":             ("warn",     "normal", 86400,  ["titel"]),
-    # Nachgezogen 2026-11-01, der Meldeweg-Abgleich fand die Regel ohne Weg.
-    "launchpad-kachel-fehler-im-browser": ("warn",    "normal", 86400,  ["labels.id"]),
     # --- finanzen (2026-09-26): die drei ausgewaehlten Meldungen ---
     # Keine davon weckt. Der Reisspunkt liegt per Vorgabe 60 Tage weg, ein
     # gerissenes Budget ist am naechsten Morgen genauso gerissen, und ein alter
@@ -114,90 +106,12 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Genauigkeit der Anzeige. Zwei Tage Ruhe, weil ein langes Wochenende ohne
     # neuen Boersenkurs der Normalfall ist.
     "finanzen-kursabruf":                ("info",     "low",    172800, []),
-    "launchpad-messung-steht":           ("warn",     "normal", 86400,  ["host"]),
     # --- Fremdquellen der Tagesuebersicht (neu 2026-09-21) ---
-    # "warn" und nicht "critical" nach Entscheid: eine tote Datenquelle
-    # ist aergerlich, aber nichts, wofuer man nachts aufsteht. Cooldown je
-    # Quelle (`name`), sonst verschluckt die erste ausgefallene Quelle die
-    # Meldung ueber die zweite. Genau dieser Fall lag am 2026-09-21 vor:
-    # paperless und marktwatch waren gleichzeitig tot.
-    # Ein Tag Ruhe je Quelle: der Befund bleibt sichtbar, ohne mehrfach taeglich
-    # zu klopfen, und die Wiedervorlage (offene-befunde) erinnert danach weiter.
-    # Dieser Satz stand bis 2026-09-26 als Kommentar ueber der cooldown-Zeile
-    # in rules.yaml und wurde dort beim naechsten Lauf dieses Skripts entfernt:
-    # es raeumt die Kommentare direkt ueber einer Cooldown-Zeile mit ab. Hier
-    # ueberlebt er.
-    "lifeops-quelle-antwortet-nicht":    ("warn",     "normal", 86400,  ["name"]),
     # --- Waechter-Herzschlag (neu 2026-09-20) ---
-    # Fuenf Zeilen fuer ALLE Waechter. Vorher wuchs diese Tabelle mit jedem
-    # neuen Waechter um ein bis drei Zeilen, und genau das Vergessen einer
-    # solchen Zeile war der Mangel: `app-kette-pruefer` lag sieben Tage still.
-    # Der Cooldown haengt am Label `waechter`, nicht regel-global -- sonst
-    # verschluckt der erste stille Waechter die Meldung ueber den zweiten.
-    "waechter-steht-still":              ("warn",     "normal", 86400,  ["waechter"]),
-    "waechter-herzschlag-fehlt":         ("warn",     "normal", 86400,  ["waechter"]),
-    # Schluessel `waechter` UND `wirt`: ein Waechter kann auf mehreren Wirten
-    # fehlen, und mit nur `waechter` verschluckte die erste Meldung alle
-    # weiteren. Woechentlich, weil ein fehlender Sammler nicht von selbst
-    # zurueckkommt und das Nachziehen ein Owner-Handgriff ist (Ausrollen mit
-    # sudo). Taegliches Nachhaken daran stumpft den Kanal ab, siehe die
-    # Begruendung bei `waechter-einheit-nicht-aktiviert` unten.
-    "waechter-wirt-fehlt":               ("warn",     "normal", 604800, ["waechter", "wirt"]),
     # --- Audit-Quelle leer (neu 2026-10-15) ---
-    # warn und nicht critical: die Luecke ist drei Monate alt und ihre Behebung
-    # ist ein Vorhaben (promtail-Build oder ein journalctl-Umweg), kein
-    # Handgriff. Wochenweise, damit die Erinnerung bleibt, ohne abzustumpfen.
-    # Schluessel `quelle`, falls spaeter weitere Audit-Quellen dazukommen.
-    "loki-audit-quelle-leer":            ("warn",     "normal", 604800, ["quelle"]),
     # --- Hochgerechnete Restlebensdauer (neu 2026-10-13) ---
-    # Schluessel `wirt` und `geraet`: die Prognose rechnet je Platte, und mit nur
-    # `wirt` verschluckte die erste Platte eines Wirts die zweite. NICHT `host`
-    # nehmen: das ist bei allen Reihen host, weil host das Textfile fuer die
-    # ganze Flotte schreibt. Ein Cooldown auf `host` waere einer fuer alles.
-    # Wochenweise bei der Warnung (Ersatz beschaffen ist Planung, kein Handgriff),
-    # taeglich bei der kritischen.
-    "datentraeger-lebensdauer-endet-bald":      ("warn",     "normal", 604800, ["wirt", "geraet"]),
-    "datentraeger-lebensdauer-endet-sehr-bald": ("critical", "high",   86400,  ["wirt", "geraet"]),
-    # Der Waechter ueber die Schwelle der beiden Regeln darueber (2026-10-15).
-    # Die Zahlen 730/365 stehen an drei Orten (haltbarkeit.yaml, Literal in der
-    # Alarmregel, Anzeige auf :8102). Diese Meldung kommt, wenn die ersten zwei
-    # auseinanderlaufen. Kein Betriebsbefund, sondern ein Pflegefehler, deshalb
-    # warn und wochenweise: die Zahl aendert sich praktisch nie, und wenn, ist
-    # das Angleichen eine Minute Arbeit. Schluessel `stufe`, weil Warn- und
-    # kritische Schwelle unabhaengig voneinander driften koennen.
-    "datentraeger-schwelle-abweichend":  ("warn",     "normal", 604800, ["stufe"]),
     # --- Gartikos Klimakette (neu 2026-10-16) ---
-    # Anlass: die Erfassung stand sieben Tage, aus zwei Gruenden hintereinander
-    # (Schalter aus am 09.10., Sensor per Zigbee weg am 13.10.), und keine
-    # Pruefung meldete es. Jede Station war gesund, offen war nur die Kette.
-    #
-    # Zwei Regeln statt einer, und sie meinen Verschiedenes: `-steht-still`
-    # ist das Symptom (die Reihe waechst nicht), `-quelle-liefert-nichts` die
-    # Ursache. Letztere feuert auch dann, wenn die Reihe noch jung ist, also
-    # BEVOR die Luecke entsteht. Darum eigener Cooldown-Schluessel: wer sie
-    # zusammenlegt, verliert genau die Unterscheidung, die sagt, welcher
-    # Handgriff faellig ist (Geraet gegen Kopplung).
-    #
-    # warn und nicht critical: es gehen keine Daten verloren, die Kurve bleibt
-    # stehen, und der Handgriff ist beim Owner (Zigbee-Router bzw. Kopplung).
-    # Taeglich, nicht stuendlich: beides sind Vorhaben von Minuten bis Tagen,
-    # und ein stuendliches Nachhaken stumpft den Kanal ab.
-    "gartiko-klima-steht-still":          ("warn",     "normal", 86400,  []),
-    "gartiko-klima-quelle-liefert-nichts": ("warn",     "normal", 86400,  []),
-    # Die Messung selbst. Haelt sie nicht, ist der Stillstand wieder unsichtbar.
-    "gartiko-klima-wache-fehler":         ("warn",     "normal", 43200,  []),
     # --- DNS-Redundanz (2026-10-24) ---
-    # Bis zum 24.10. gab es keine DNS-Regel, bei der Schicht, von der jeder
-    # andere Dienst abhaengt. Die beiden critical stehen bewusst neben
-    # `dns-stack-degraded`: ein namenloses LAN ist ein Grund aufzustehen.
-    "dns-primaer-loest-nicht-auf":        ("critical", "high",   1800,  ["art"]),
-    "dns-beide-resolver-weg":             ("critical", "high",   900,   []),
-    # Der Sekundaer weckt NICHT: solange der Primaer traegt, faellt nichts aus,
-    # es fehlt nur der Notausgang. Das ist ein Befund fuer den naechsten
-    # Vormittag, kein Aufstehen.
-    "sekundaer-dns-kennt-interne-namen-nicht": ("warn", "normal", 43200, []),
-    "sekundaer-dns-antwortet-nicht":      ("warn",     "normal", 43200, []),
-    "dns-redundanz-wache-steht":          ("warn",     "normal", 43200, []),
     # --- Soll-Ist-Abgleich der Dienste (2026-10-21) ---
     # Nach Dienst-KLASSE getrennt und nicht nach Namensliste. Fuer Home
     # Assistant, Gitea, Mosquitto oder das tardis ist Aufstehen die richtige
@@ -206,17 +120,6 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Namensliste in der Regel waere die Alternative, und die veraltet genau
     # dann, wenn ein neuer CORE-Dienst dazukommt.
     "dienst-soll-laeuft-nicht-kritisch":  ("critical", "high",   1800,  ["host", "dienst"]),
-    # 6 h je Dienst: ein Dienst, der weg ist, bleibt weg, bis jemand hingeht.
-    # Haeufiger erinnern waere Laerm, und Laerm ist genau das, was diesen
-    # Waechter am Ende wieder stummschalten wuerde.
-    "dienst-soll-laeuft-nicht":           ("warn",     "normal", 21600, ["host", "dienst"]),
-    # Die Blindheit zu den beiden darueber, bewusst NICHT lauter als der
-    # Befund, den sie verdeckt.
-    # Ohne key_fields: es gibt genau einen Abgleich.
-    "dienst-abgleich-unvollstaendig":     ("warn",     "normal", 21600, []),
-    # info: ein nicht vollzogener Abschalt-Entschluss ist kein Ausfall.
-    "dienst-laeuft-unerwartet":           ("info",     "low",    86400, ["host", "dienst"]),
-    "dienst-live-unbekannt":              ("info",     "low",    86400, ["host", "name"]),
     # --- Sicherung je Position (2026-10-21) ---
     # Alle vier auf warn und nicht auf critical, obwohl es um die Sicherung
     # geht. Begruendung: `backup-run-failed` (critical, oben) deckt den Fall "der
@@ -225,61 +128,8 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Genau die Verwechslung dieser zwei Ebenen hat vom 17.10. bis 21.10. einen
     # critical getragen, der nichts Kritisches meinte.
     # --- Auslieferung der Welt-Archive (nachgetragen 2026-10-23) ---
-    # Die einzige critical-Regel des Bestands OHNE Zustellweg war
-    # `AuslieferungZugangsdatenGefunden`: ein Zugangsdatum in einem Archiv, das
-    # jedes Clan-Mitglied laden kann, gemeldet an niemanden. Sie trug damit den
-    # Daueralarm `AlarmOhneMeldewegCritical`. Hier gehoert sie zu
-    # `authelia-brute-force` und `gitea-anmeldung-sturm`: ein offenes Leck ist
-    # ein Grund aufzustehen.
-    # 30 min: ein offenes Leck darf nicht halbtags unerwaehnt bleiben, aber auch
-    # nicht im Minutentakt wiederholt werden, solange es offen ist.
-    "auslieferung-zugangsdaten-gefunden": ("critical", "high",   1800,  []),
-    "welt-auslieferung-zurueckgehalten":  ("warn",     "normal", 86400, []),
-    "auslieferung-regel-greift-nicht":    ("warn",     "normal", 86400, ["spiel", "welt"]),
-    # Die zwei Lebendigkeits-Regeln: nicht lauter als der Befund, den sie
-    # verdecken.
-    "auslieferung-pruefung-steht-still":  ("warn",     "normal", 43200, []),
-    "auslieferung-metrik-fehlt":          ("warn",     "normal", 43200, []),
-    "backup-position-veraltet":           ("warn",     "normal", 43200, ["position"]),
-    # 7 Tage: der Grund ist ein Owner-Handgriff (Tresor-Kennwort), und taeglich
-    # an etwas zu erinnern, das man selbst nicht erledigen kann, stumpft ab.
-    "backup-position-lange-uebersprungen": ("warn",    "normal", 604800, ["position"]),
-    "kronjuwelen-haus-fehlgeschlagen":    ("warn",     "normal", 43200, ["host"]),
-    "kronjuwelen-haus-veraltet":          ("warn",     "normal", 43200, ["host"]),
-    "kronjuwelen-haus-metrik-fehlt":      ("warn",     "normal", 43200, ["host"]),
-    # 1 h: die Abhilfe ist ein Handgriff am selben Abend, ein Stillstand ueber
-    # Stunden soll sich wieder melden.
-    "agenten-deckel-bremst":              ("warn",     "normal", 3600,  ["host"]),
-    "backup-position-nie-erfolgreich":    ("warn",     "normal", 86400, []),
-    "backup-positions-messung-steht":     ("warn",     "normal", 43200, []),
-    # Taeglich je Entitaet und nicht alle 6 h: die Behebung ist ein Griff am
-    # Geraet oder am Funknetz, und an etwas zu erinnern, das niemand am Rechner
-    # erledigen kann, stumpft den Kanal ab. Schluessel ist die Entitaet, weil
-    # jede fuer sich einfriert.
-    "temperaturwert-eingefroren":        ("warn",     "normal", 86400,  ["entity"]),
+    "chaos-drill-fehlschlag":             ("warn",     "normal", 86400, ["dienst"]),
     # --- lager (2026-10-24): die letzten vier Regeln ohne jeden Meldeweg ---
-    # Zwei Paare mit verschiedener Lautstaerke, und die Trennung ist der Punkt.
-    # Die Messkette ist ein STILLER AUSFALL: der Dienst sieht gesund aus, seine
-    # Fachzahlen sind weg, und solange das steht, sind die zwei Bestandsregeln
-    # nicht still, sondern blind. Das gehoert auf warn, 6 h.
-    # Der Bestand ist ein OFFENER BEFUND: alles funktioniert, es bucht nur
-    # niemand. Das gehoert auf info und wochenweise. Taeglich an einen Vorrat zu
-    # erinnern, der seit 237 Tagen unberuehrt ist, macht genau den Kanal taub,
-    # auf dem die Messkette meldet.
-    # Ohne key_fields: es gibt genau ein Lager auf genau einem Wirt.
-    "lager-messkette-weg":               ("warn",     "normal", 21600,  []),
-    "lager-messwerte-nicht-lesbar":      ("warn",     "normal", 21600,  []),
-    "medien-vault-noch-kein-melder":     ("info",     "low",    604800, []),
-    "lager-seit-lange-ohne-buchung":     ("info",     "low",    604800, []),
-    "lager-bestand-ueberwiegend-abgelaufen": ("info",  "low",    604800, []),
-    # info und wochenweise: eine offene Eintragung ist kein Ausfall.
-    "waechter-ohne-register-eintrag":    ("info",     "low",    604800, ["waechter"]),
-    # Ohne key_fields: es gibt genau ein Register.
-    "waechter-register-fehlt":           ("warn",     "normal", 86400,  []),
-    # Wochenweise, weil die Behebung ein Owner-Handgriff ist (`systemctl --user`
-    # ist fuer den Assistenten gesperrt). Taegliches Nachhaken an einer Sache,
-    # die man heute nicht selbst erledigen kann, stumpft den Kanal ab.
-    "waechter-einheit-nicht-aktiviert":  ("warn",     "normal", 604800, ["waechter"]),
     # --- Selbstheilung (unit-heal-guard, neu 2026-09-20) ---
     # Meldet JEDEN Eingriff, auch den geglueckten: ein stiller Selbstheiler
     # verschiebt den blinden Fleck nur. "warn" statt "info", weil ein
@@ -306,112 +156,15 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Meldung ueber die zweite.
     "probe-fehlgeschlagen":              ("warn",     "normal", 3600,  ["host", "service"]),
     # --- Die acht, die am 2026-09-27 ohne jeden Meldeweg dastanden ---
-    # Vier davon waren tags zuvor beim Bau von `finanzen` entstanden, drei bei
-    # marktwatch. Das Muster ist immer dasselbe: die Alarmregel wird gebaut, der
-    # Zustellweg ist ein zweiter Schritt an einem anderen Ort, und der faellt weg.
-    # Alle acht sind `warning`, also leise, und mit Tagescooldown: keiner davon
-    # rechtfertigt ein Aufstehen, alle sind "morgen ansehen".
-    "finanzen-faellige-buchungen":       ("warn",     "normal", 86400, []),
-    "finanzen-kurse-veraltet":           ("warn",     "normal", 86400, []),
-    "finanzen-nie-ein-kurs":             ("warn",     "normal", 86400, []),
-    "finanzen-nur-lesend":               ("warn",     "normal", 86400, []),
-    "terraria-leitung-zusammengebrochen": ("warn",    "normal", 86400, []),
-    # Cooldown je Quelle: sonst verschluckt die erste tote Quelle die Meldung
-    # ueber die zweite, und genau das ist bei marktwatch der Normalfall.
-    "marktwatch-quelle-nie-geliefert":   ("warn",     "normal", 86400, ["source"]),
-    "marktwatch-quelle-liefert-nichts":  ("warn",     "normal", 86400, ["source"]),
-    "marktwatch-quellen-messung-aus":    ("warn",     "normal", 86400, []),
-    # Dasselbe Paar fuer die Nachrichten-Engine, und bewusst mit einer Woche
-    # statt eines Tages beim toten Feed: dessen Alarm hat schon 14 Tage Vorlauf.
-    # Wer dann meldet, meldet nichts Eiliges, sondern etwas Grundsaetzliches,
-    # und dafuer ist eine taegliche Erinnerung das falsche Mittel (gleiche
-    # Begruendung wie bei zigbee-geraet-stumm).
-    # Cooldown je Feed, sonst verdeckt die erste tote Quelle die zweite, solange
-    # der erste Befund nachhallt, und dann sieht ein Haus mit drei toten Quellen
-    # aus wie eines mit einer.
-    # Dieser Wortlaut stand bis zum 2026-10-06 als Kommentar ueber der
-    # Cooldown-Zeile in rules.yaml und ist dort beim Lauf dieses Skripts
-    # abgeraeumt worden, wie es die Stelle in `umschreiben()` vorsieht. Der
-    # zweite Fall derselben Art nach dem 2026-09-26, deshalb hier gesichert:
-    # Begruendungen zu Cooldowns gehoeren in DIESE Tabelle, nicht nach rules.yaml.
-    "nachrichten-feed-liefert-nichts":   ("warn",     "normal", 604800, ["feed"]),
-    "nachrichten-feed-messung-aus":      ("warn",     "normal", 86400, []),
     # --- Jellyfin gegen den Media-Vault (neu 2026-10-03) ---
-    #
-    # Vier der fuenf Regeln der Gruppe `jellyfin-vault` landen hier und nicht in
-    # critical: der Medienserver ist kein CORE-Dienst, und die richtige Reaktion
-    # auf einen stehenden Film ist "nachher ansehen". Der Cooldown laeuft je
-    # Instanz, weil es zwei gibt (haupt und privat) und die eine die andere sonst
-    # verdeckt.
-    #
-    # Die Ausnahme ist `jellyfin-portlock-fehlt`, und zwar nicht wegen des
-    # Dienstes, sondern wegen der Mediathek dahinter: fehlt der Lock, liegt sie
-    # LAN-weit offen. Das ist ein Sicherheitsbefund und weckt.
-    "jellyfin-vault-offen-dienst-aus":   ("warn",     "normal", 21600, ["instanz"]),
-    "jellyfin-medien-nicht-lesbar":      ("warn",     "normal", 21600, ["instanz"]),
-    "jellyfin-portlock-fehlt":           ("critical", "high",   1800,  ["host"]),
-    "jellyfin-portlock-ungeprueft":      ("info",     "low",    86400, ["host"]),
-    "jellyfin-wache-befund-ohne-regel":  ("info",     "low",    604800, ["host"]),
-    # Ausgangssperre (2026-11-01): ein abgewiesener Versuch nach draussen
-    # ist ein Sicherheitsbefund wie der Port-Lock, beide wecken. Offene Abrufer
-    # allein sind warn, weil die Sperre davor steht.
-    "jellyfin-will-nach-draussen":       ("critical", "high",   3600,  ["host"]),
-    "jellyfin-ausgangssperre-fehlt":     ("critical", "high",   1800,  ["host"]),
-    "jellyfin-online-abrufer-an":        ("warn",     "normal", 86400, ["instanz"]),
     # --- Navidrome gegen den Musik-Vault (Meldeweg nachgezogen 2026-11-02) ---
-    # Gleiche Einstufung wie Jellyfin: Port-Lock, Ausgangssperre und ein
-    # abgewiesener Versuch nach draussen wecken, der Rest ist warn/info.
-    # Schluessel host, weil es nur eine Instanz gibt.
-    "navidrome-vault-offen-dienst-aus":  ("warn",     "normal", 21600, ["host"]),
-    "navidrome-vault-nicht-lesbar":      ("warn",     "normal", 21600, ["host"]),
-    "navidrome-portlock-fehlt":          ("critical", "high",   1800,  ["host"]),
-    "navidrome-will-nach-draussen":      ("critical", "high",   3600,  ["host"]),
-    "navidrome-ausgangssperre-fehlt":    ("critical", "high",   1800,  ["host"]),
-    "navidrome-externe-dienste-an":      ("warn",     "normal", 86400, ["host"]),
-    "navidrome-wache-befund-ohne-regel": ("info",     "low",    604800, ["host"]),
-    # Saganta-Konto-Wache (2026-11-08): Befunde fuer morgen, keiner weckt.
-    "saganta-mandant-ohne-konto":        ("info",     "low",    604800, ["dienst"]),
-    "saganta-loeschweg-luecke":          ("warn",     "normal", 86400,  []),
-    "saganta-konto-wache-dienst-fehlt":  ("info",     "low",    604800, []),
-    "briefkasten-tresor-zu":             ("warn",     "normal", 604800, []),
     "log-nachtdigest":                   ("info",     "low",    72000,  []),
-    "bot-fehler-im-log":                 ("warn",     "normal", 21600,  ["bot"]),
-    "bot-warnungen-haeufen":             ("warn",     "normal", 86400,  ["bot"]),
     # --- Backup-Abdeckung (neu 2026-10-04) ---
-    #
-    # Die Luecke steht auf `warn`/`high` und nicht auf `critical`, obwohl es um
-    # drohenden Datenverlust geht. Der Grund ist der Zeitbezug: ein Pfad ohne
-    # Sicherung ist erst schlimm, wenn der Wirt ausfaellt, und bis dahin ist die
-    # richtige Reaktion ein Entscheid am Schreibtisch. `high` sorgt dafuer, dass
-    # es trotzdem nach Discord durchgeht (dort kommt nur high/critical an) --
-    # genau der Weg, auf dem ein Entscheid gefaellt wird.
-    "backup-abdeckung-luecke":           ("warn",     "high",   86400, ["host"]),
-    "backup-pfadliste-zweigeteilt":      ("info",     "low",    604800, ["host"]),
-    # restic-prune-Wache (2026-10-13). Dieselbe Einstufung und dieselbe
-    # Begruendung wie `backup-abdeckung-luecke` zwei Zeilen hoeher: es geht um
-    # drohenden Datenverlust, aber mit Zeitbezug -- ein Repo ohne prune sichert
-    # weiter fehlerfrei, bis die Ablage volllaeuft. `high` statt `normal`, damit
-    # es nach Discord durchgeht (dort kommt nur high/critical an), denn die
-    # richtige Reaktion ist ein Handgriff oder ein Entscheid am Schreibtisch.
-    # Schluessel `wirt`, nicht `host`: host schreibt das Textfile fuer alle
-    # Wirte, `host` ist also immer host. Mit dem falschen Schluessel
-    # verschluckt der erste gemeldete Wirt alle uebrigen fuer einen Tag.
-    "restic-prune-ueberfaellig":         ("warn",     "high",   86400, ["wirt"]),
-    "restic-prune-nicht-messbar":        ("warn",     "high",   604800, ["wirt"]),
-    "restic-prune-falscher-wirt":        ("warn",     "high",   86400, ["wirt"]),
-    # Ohne Schluessel: die Metrik ist eine Gesamtzahl und traegt kein `wirt`.
-    "restic-prune-ausnahme-wirkungslos": ("info",     "low",    604800, []),
     "service-degraded-core":             ("warn",     "normal", 3600,  ["host", "service"]),
     "backup-job-failed":                 ("warn",     "normal", 3600,  ["service_id"]),
     # Der Sammelalarm selbst weckt nicht: die ihn ausloesenden Einzelalarme stehen
     # auf critical und tragen das Aufwachen. Sonst klingelt eine Stoerung zweimal.
     "alert-storm":                       ("warn",     "normal", 1800,  []),
-    "host-high-cpu-recurring":           ("warn",     "normal", 7200,  ["host"]),
-    # Vorwarnstufen: richtige Reaktion ist "heute ansehen", nicht aufstehen.
-    "jetson-temp-high":                  ("warn",     "normal", 7200,  ["host"]),
-    "cpu-temp-warning":                  ("warn",     "normal", 7200,  ["host"]),
-    # Waechter der Temperaturregeln: ohne Messwert sind sie stumm, kaputt ist nichts.
-    "host-temperatur-unbekannt":         ("warn",     "normal", 21600, ["host"]),
     "wireguard-degraded":                ("warn",     "normal", 3600,  ["host"]),
     "capacity-pressure":                 ("warn",     "normal", 7200,  ["host"]),
     "cert-expiry-soon":                  ("warn",     "normal", 86400, ["domain"]),
@@ -456,18 +209,6 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Compose-Container, deren Name stabil ist.
     "docker-network-unauthorized-connect": ("warn",   "normal", 3600,  ["host", "network"]),
     "crowdsec-security-decision":        ("warn",     "normal", 3600,  ["host"]),
-    # Die beiden leisen der Gitea-Anmeldewache (2026-10-06), Gegenstueck zu
-    # gitea-anmeldung-sturm im critical-Block. Beide `warning` in Prometheus und
-    # hier bewusst `normal`: ein einzelner Fehlversuch ist meist der Besitzer mit
-    # einem veralteten Tresor-Eintrag, und die richtige Reaktion ist nachsehen,
-    # nicht aufstehen. 6 h Cooldown, nicht 24: bei rund drei Anmeldungen am Tag
-    # wuerde ein Tagescooldown eine zweite, echte Serie verschlucken, und genau
-    # die waere die interessante.
-    "gitea-anmeldung-fehlgeschlagen":    ("warn",     "normal", 21600, []),
-    "gitea-anmeldung-unbekanntes-konto": ("warn",     "normal", 21600, []),
-    # Kein Angriff, sondern eine Automatik mit Benutzername in der Remote-URL,
-    # die Gitea erst im zweiten Versuch annimmt. Leise wie die beiden darueber.
-    "gitea-basic-pruefung-flut":         ("warn",     "normal", 21600, []),
     "network-device-discovered-new":     ("warn",     "normal", 3600,  ["mac"]),
     "systemd-unit-failed":               ("warn",     "normal", 3600,  ["host", "unit"]),
     # Einzige gewollte Abweichung vom Muster "warn -> normal": leiser Kanal, aber hohe
@@ -491,32 +232,14 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # ueber cooldown_seconds, wo jeder Lauf dieses Skripts es loescht.)
     "image-cve-alert":                   ("warn",     "normal", 3600,  ["host", "kind"]),
     "node18-orchestrator-failed":        ("warn",     "normal", 3600,  []),
-    # Spielserver auf gamehost. Bewusst NICHT critical: niemand muss um 3 Uhr aufstehen,
-    # weil ein Spiel nicht erreichbar ist, die richtige Reaktion ist "morgen ansehen".
-    # Cooldown je Spiel, sonst verschluckt das erste kaputte Spiel das zweite.
-    "spiel-nicht-weckbar":               ("warn",     "normal", 21600, ["spiel"]),
-    "game-arbiter-steht":                ("warn",     "normal", 7200,  []),
-    # 12 h Cooldown je Spiel: der Zustand ist per Definition ein Dauerzustand,
-    # eine haeufigere Erinnerung an dieselbe Sache waere nur Laerm.
-    "spiel-dauerhaft-nicht-startbar":    ("warn",     "normal", 43200, ["spiel"]),
-    # Der kaputte Server, der gruen aussieht: steht die Unit in 'failed', laeuft ihr
-    # Platzhalter weiter -- spiel_weckbar meldet 1, spiel-nicht-weckbar schweigt also.
-    # Das ist der Fall, den niemand sieht, bis ein Spieler sich beschwert. Trotzdem warn
-    # und nicht critical: es geht nichts verloren, der Arbiter versucht es weiter, und
-    # die richtige Reaktion ist "heute noch ansehen", nicht "sofort aufstehen".
-    "spiel-dienst-gescheitert":          ("warn",     "normal", 21600, ["spiel"]),
-    "spiel-start-laeuft-ins-leere":      ("warn",     "normal", 21600, ["spiel"]),
-    # Kapazitaets-Befund, kein Ausfall: der hinterlegte Bedarf altert still, und ein zu
-    # kleiner Wert laesst den Arbiter Starts zusagen, bei denen am Ende der OOM-Killer
-    # entscheidet. 24 h Cooldown, weil die Antwort eine einmalige Korrektur ist.
-    "spiel-speicher-ueber-bedarf":       ("warn",     "normal", 86400, ["spiel"]),
-    # Blindheit des Spiel-Waechters: aergerlich, aber ohne Sicherheits- oder
-    # Datenverlust-Folge -- anders als bei ddos-schutz-blind, das deshalb critical ist.
-    "spiel-metriken-fehlen":             ("warn",     "normal", 21600, []),
     # Blindheit des Versions-Waechters. Warn statt info, weil sie sonst genau das
     # Schicksal teilt, das sie meldet: unbemerkt bleiben. Ein veralteter Server
     # weist Spieler ab, steht aber weiter "online" in der Liste.
     "game-version-unmessbar":            ("warn",     "normal", 86400, ["spiel"]),
+    # pin-wache: neue Version oder ungleiche Wirte, sieben Tage je Image; Blindheit taeglich.
+    "pin-veraltet":                      ("warn",     "normal", 604800, ["name"]),
+    "pin-abweichend":                    ("warn",     "normal", 604800, ["name"]),
+    "pin-unmessbar":                     ("warn",     "normal", 86400, ["name"]),
     # Der Befund selbst gehoert in denselben Kanal wie die Blindheit darueber, und
     # stand bis zum 2026-09-19 eine Stufe leiser (info, also stumm und ohne Discord).
     # Die Begruendung der Zeile darueber galt damit fuer die Meldung "ich kann nicht
@@ -529,150 +252,12 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Die Mod-Ebene desselben Befunds. Gleicher Kanal, gleicher Tagescooldown: ein
     # veralteter Mod-Stand ist ein Dauerzustand, der sich nur durch Mod-Pflege aendert.
     "game-mods-outdated":                ("warn",     "normal", 86400, ["spiel"]),
-    # Ein wartender Neustart ist nach jedem Kernel-Update normal, erst das
-    # Liegenbleiben ist der Befund: der Patch ist eingespielt und wirkt nicht.
-    # Warn statt critical, die richtige Reaktion ist ein Wartungsfenster, kein
-    # Aufstehen. Cooldown je Host und bewusst lang (7 Tage): der Zustand aendert
-    # sich nur durch den Neustart selbst, haeufigeres Erinnern entwertet den Kanal.
-    "neustart-offen":                    ("warn",     "normal", 604800, ["host"]),
-    # Nachgezogen 2026-09-17. Beide Regeln feuerten in Prometheus und blieben
-    # stumm, weil ein namentlicher Eintrag fehlte und homelab/alerts/+/fired die
-    # Storm-Erkennung ist (min_events 5), kein Auffangnetz.
-    # Cooldown je Konsument und nicht je Host: mehrere Konsumenten haengen am
-    # selben Gateway, ein Schluessel je Wirt liesse den zweiten Befund
-    # verschwinden. 6 h, weil die Prometheus-Regel schon 2 h `for` traegt.
-    "llm-konsument-kommt-nicht-durch":   ("warn",     "normal", 21600, ["konsument"]),
-    # Die Ueberwachung der Ueberwachung war selbst stumm: diese Regel ist der
-    # einzige Alarm, der einen Ausfall von host noch melden koennte, und sie
-    # hatte bis zum 2026-09-17 keinen Meldeweg.
-    "beobachter2-meldeweg-tot":          ("critical", "high",   21600, ["host"]),
-    # Bis 2026-11-07 fragte Grafana smartmon_device_smart_healthy ab und sah nur
-    # die drei x86-Nodes; die NVMe von node1 und node2 war ohne diesen Eintrag
-    # ungedeckt. Heute liest Grafana node_smart_healthy, das hier ist der ntfy-Weg.
-    "datentraeger-smart-defekt":         ("critical", "high",   21600, ["host", "disk"]),
-    "datentraeger-reserve-erschoepft":   ("critical", "high",   21600, ["host", "disk"]),
-    # Bewusst warn trotz severity critical: bei 95 Prozent verbrauchter
-    # Schreibmenge laeuft die Platte weiter, die richtige Reaktion ist "Ersatz
-    # bestellen". 24 h Cooldown, der Wert bewegt sich nur langsam.
-    "datentraeger-verschleiss-kritisch": ("warn",     "normal", 86400, ["host", "disk"]),
-    # Die drei Vorstufen, ergaenzt 2026-09-19. Zu jeder gab es bereits eine
-    # Endstufe oben, gedeckt war also der Moment, in dem es zu spaet ist, und
-    # offen der, in dem man noch handeln kann. Alle drei auf warn: ihr Zweck ist
-    # Vorlauf. Auf critical gelegt macht eine Bestellentscheidung einen
-    # Nachtalarm, und danach wird der Kanal stummgeschaltet.
-    "datentraeger-defektsektoren":       ("warn",     "normal", 86400, ["host", "disk"]),
-    # Eine Woche Cooldown: der Wert steht bei 80 Prozent und bewegt sich ueber
-    # Monate. Taeglich erinnern hiesse, eine Beschaffung zu Rauschen zu machen.
-    "datentraeger-verschleiss-hoch":     ("warn",     "normal", 604800, ["host", "disk"]),
-    "datentraeger-zu-warm":              ("warn",     "normal", 86400, ["host", "disk"]),
     # --- eMMC (jetsons Boot-Karte), ergaenzt 2026-10-15 -----------------------
-    # Die fuenf Regeln waren scharf in Prometheus und hatten keinen Ausgang,
-    # zwei davon mit severity critical. Jede bekommt die Einstufung ihres
-    # SMART-Geschwisters darueber, damit dasselbe Problem nicht je Bus anders
-    # laut ist.
-    #
-    # Schluessel `geraet` statt `disk`: die eMMC-Metriken kommen aus dem
-    # Sammler auf dem Geraet selbst und benennen das Medium so. `host` ist hier
-    # ausnahmsweise der ECHTE Wirt (jetson), nicht der Bote, weil jetson in
-    # seinen eigenen textfile-Collector schreibt. Gegengemessen 2026-10-15.
-    "emmc-lebensdauer-fortgeschritten":  ("warn",     "normal", 604800, ["host", "geraet"]),
-    # warn trotz severity critical, und das ist dieselbe Entscheidung wie bei
-    # `datentraeger-verschleiss-kritisch` neun Zeilen hoeher: ab Stufe 10 laeuft
-    # die Karte weiter, und die richtige Reaktion ist, den vorbereiteten
-    # SSD-Boot zu aktivieren. Eine eMMC ist aufgeloetet, es gibt nichts zu
-    # tauschen, was ein Nachtalarm beschleunigen wuerde. Taeglich erinnern, weil
-    # ab hier ein Entscheid aussteht.
-    "emmc-lebensdauer-fast-aufgebraucht": ("warn",    "normal", 86400,  ["host", "geraet"]),
-    # Eine Woche: `pre_eol_info` ist ein Drei-Zustands-Register und bleibt auf
-    # der 2 stehen, bis es auf die 3 springt. Taeglich dasselbe zu melden macht
-    # aus einem Vorlauf Rauschen.
-    "emmc-reserve-bloecke-knapp":        ("warn",     "normal", 604800, ["host", "geraet"]),
-    # Einstufung wie `datentraeger-reserve-erschoepft` oben, und hier zu Recht
-    # critical: 0x03 heisst "Urgent", der Vorrat an Ersatzblöcken ist weg, und
-    # der naechste Defekt trifft Daten. Auf jetson zugleich das Boot-Medium.
-    "emmc-reserve-bloecke-erschoepft":   ("critical", "high",   21600,  ["host", "geraet"]),
-    # `warn` als Kanal, aber `high` als Lautstaerke, wie bei
-    # `restic-prune-nicht-messbar`: "ich kann nicht messen" verdeckt genau die
-    # vier Befunde darueber, darunter einen critical. Leiser einzustufen machte
-    # die Blindheit zur bequemeren von beiden Lagen. Eine Woche Cooldown reicht,
-    # weil die Regel selbst erst nach 25 h Blindheit anspringt.
-    "emmc-telemetrie-nicht-lesbar":      ("warn",     "high",   604800, ["host", "geraet"]),
-    # Nicht zu verwechseln mit restore-drill-failed: das faengt den eigenen
-    # MQTT-Weg der service-restore-drill. Diese haengt an der Prometheus-Metrik
-    # der restic-Rueckspielprobe auf proxmox und pbs.
-    "rueckspielprobe-fehlgeschlagen":    ("critical", "high",   21600, ["host"]),
-    # 6 h und damit kurz fuer einen Wochentermin: das Nachholfenster betraegt
-    # 24 h, und innerhalb dieses Fensters soll mehr als einmal erinnert werden.
-    "wochenbericht-montag-ohne-versand": ("warn",     "normal", 21600, ["host"]),
     # Stand schon in rules.yaml, fehlte aber hier und bekam seinen Kanal damit
     # nie zugewiesen (der Pruefer meldete sie als "OHNE ZUORDNUNG").
     # Der Eintrag bestaetigt den vorgefundenen Ist-Zustand, er aendert ihn nicht.
     "vektorsuche-degradiert":            ("warn",     "normal", 21600, ["host", "container"]),
-    # 12 h Cooldown je Geraet, gleiche Begruendung wie bei den Spielen: ein Geraet, das
-    # weg ist, bleibt weg, bis jemand hingeht. Haeufiger erinnern hiesse nur Laerm --
-    # und Laerm ist genau das, was diesen Waechter am Ende wieder stummschalten wuerde.
-    # Die Summe (2026-10-15): nicht "ein Geraet fehlt", sondern "der Bestand
-    # ist weg". Wochen-Cooldown statt der 43200 darueber, weil der Zustand sich
-    # bis zur Entscheidung nicht aendert -- dieselbe Ueberlegung wie bei
-    # `zigbee-ausnahme-wirkungslos` weiter unten. Ohne Schluessel, denn der
-    # Ausdruck aggregiert ueber den ganzen Job und traegt kein geraet-Label.
-    # Nachgezogen 2026-09-19: die Gruppe homelab-beobachtungsguete, also die
-    # Ebene, die das Stummwerden anderer finden soll, war selbst vollstaendig
-    # stumm. Alle neun Regeln feuerten in Prometheus ohne jeden Meldeweg.
-    # Ausloeser war handfest: SystemdUnitLaengerAusgefallen trug an dem Tag
-    # fuenf Befunde, darunter restic-backup.service auf zwei Wirten, waehrend
-    # die letzte gelungene Off-Site-Sicherung 52 h zurueck lag.
-    #
-    # Cooldown je Wirt UND Unit: neun Befunde auf sieben Wirten standen
-    # gleichzeitig offen, ein gemeinsamer Schluessel haette acht davon
-    # verschluckt. 24 h, weil sich der Zustand nur aendert, wenn jemand hingeht.
-    "systemd-unit-laenger-ausgefallen":  ("warn",     "normal", 86400, ["beobachtet", "unit"]),
-    # Die beiden Waechter-Regeln bewusst OHNE Schluessel, gegen das Hausmuster:
-    # der Waechter arbeitet seine Ziele in EINER Schleife ab. Faellt er aus,
-    # faellt er fuer alle -- am 2026-09-19 stand die Regel dadurch gleichzeitig
-    # fuer alle 15 beobachteten Wirte an. Ein Schluessel je Wirt haette daraus
-    # 15 Pushes fuer einen einzigen haengenden Prozess gemacht.
-    "systemd-waechter-stumm":            ("warn",     "normal", 21600, []),
-    "systemd-waechter-host-fehlt":       ("warn",     "normal", 21600, []),
-    "alarmregel-metrik-unbekannt":       ("warn",     "normal", 86400, ["regel"]),
-    # Ohne Schluessel, weil der Ausdruck im Feuerfall keine unterscheidenden
-    # Labels traegt.
-    "alarm-lebendtest-fehler":           ("warn",     "normal", 21600, []),
 
-    # Waechter-der-Waechter (2026-09-19). Alle auf warn, keiner auf critical:
-    # eine stehengebliebene Messung ist kein Grund aufzustehen, sondern einer,
-    # am naechsten Tag hinzusehen. Umgekehrt darf die Blindheit nicht LAUTER
-    # sein als der Befund, den sie verdeckt.
-    # Die Cooldowns sind lang (6 h bis 24 h), weil diese Zustaende stehen: ein
-    # Waechter, der ausgefallen ist, bleibt bis zum Eingriff ausgefallen. Ein
-    # kurzer Cooldown erzeugte hier taeglich dieselbe Zeile, und ein Befund, den
-    # man jeden Morgen wegwischt, ist so gut wie keiner.
-    # Beide ohne Schluessel: ein Pruefer, eine Instanz, die Ausdruecke tragen
-    # im Feuerfall keine unterscheidenden Labels.
-    "config-mount-pruefer-fehler":       ("warn",     "normal", 43200, []),
-    "llm-konsumenten-wache-fehler":      ("warn",     "normal", 43200, []),
-    "llm-konsumenten-wache-metrik-fehlt": ("warn",    "normal", 43200, []),
-    # Rueckspielprobe je Wirt: hier ist ein Schluessel richtig, weil jeder Wirt
-    # sein eigenes Repo hat und ein Ausfall auf proxmox nichts ueber node1 sagt.
-    "rueckspielprobe-steht-still":       ("warn",     "normal", 86400, ["host"]),
-    "rueckspielprobe-metrik-fehlt":      ("warn",     "normal", 86400, ["host"]),
-    "rueckspielprobe-meldeweg-tot":      ("warn",     "normal", 43200, []),
-    "service-rueckspielprobe-steht-still": ("warn",   "normal", 86400, ["host"]),
-    "service-rueckspielprobe-metrik-fehlt": ("warn",  "normal", 86400, ["host"]),
-    "wochenbericht-wache-steht-still":   ("warn",     "normal", 43200, ["host"]),
-    "wochenbericht-zustand-unlesbar":    ("warn",     "normal", 43200, ["host"]),
-    "wochenbericht-metrik-fehlt":        ("warn",     "normal", 86400, ["host"]),
-    # Schluessel je Spiel: zwei gleichzeitig vergessene Wartungen sind zwei
-    # getrennte Sachverhalte, und die zweite darf nicht von der ersten
-    # verschluckt werden.
-    "spiel-wartung-vergessen":           ("warn",     "normal", 43200, ["spiel"]),
-    # Drift der Systemdateien eines Wirts. Kein Ausfall, aber eine Aenderung, die nur im
-    # Kopf dokumentiert ist; einmal am Tag reicht, der Abgleich laeuft taeglich.
-    "host-dateien-weichen-ab":           ("warn",     "normal", 86400, ["wirt"]),
-    # Selbstheilung der Spielserver: gehaeufte Heilungen = Defekt, haengend trotz Heilung =
-    # Spieler stehen draussen. Beides leise, das zweite mit hoeherer Prioritaet.
-    "spiel-heilt-sich-staendig":         ("warn",     "normal", 43200, ["spiel"]),
-    "spiel-haengt-dauerhaft":            ("warn",     "high",   7200,  ["spiel"]),
 
     # Die einzige Regel hier, die keinen Stoerfall meldet: die taegliche
     # Erinnerung an einen Pruefungstermin. Sie steht in `warn` und nicht in
@@ -714,244 +299,24 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # TapoLeuchtmittelLaengerWeg am 2026-09-12 ohne ein einziges Geraet da.
     # 7 Tage Cooldown, weil sich der Zustand nur durch eine Entscheidung aendert.
     "systemd-timer-verwaist-stehend":    ("info",     "low",    604800, ["beobachtet", "unit"]),
-    "alarmregel-ohne-subjekt":           ("info",     "low",    604800, ["regel"]),
-    "alarmregel-ausnahme-ueberholt":     ("info",     "low",    604800, ["regel"]),
 
-    # ── Geteilte Quellen von Herb und Gartiko (2026-09-20) ───────────────
-    # Seit der Repo-Trennung sieht kein Werkzeug in einem der beiden Baeume
-    # den anderen. Drift zwischen Doktor-Katalog, Sorten-Katalog und der
-    # Klima-Rechnung erzeugt keinen Fehler, sondern zwei Antworten, die nicht
-    # mehr zusammenpassen: im Discord ein anderer VPD als auf gartiko.de.
-    #
-    # Alle drei auf 'warn', keine auf 'critical': nichts davon faellt aus,
-    # und nichts davon ist nachts reparierbar. Umgekehrt gehoert es auch
-    # nicht auf 'info', denn der Zustand wird mit jedem Tag teurer, an dem
-    # auf der veralteten Kopie weitergearbeitet wird.
-    #
-    # Cooldown 24 h, weil der Pruefer zweimal taeglich laeuft und der Zustand
-    # steht, bis jemand nachzieht. Schluessel je Wirt: der Pruefer laeuft nur
-    # auf host, ein feinerer Schluessel haette hier nichts zu trennen.
-    "geteilte-quelle-driftet":           ("warn",     "normal", 86400, ["host"]),
-    # Bewusst dieselbe Lautstaerke wie der Befund selbst, nicht leiser:
-    # "ich kann nicht messen" verdeckt genau den Fall, den die Regel darueber
-    # finden soll, und eine leisere Einstufung machte die Blindheit zur
-    # bequemeren von beiden.
-    "geteilte-quelle-nicht-messbar":     ("warn",     "normal", 86400, ["host"]),
 
-    # ── Bibliothek: Dateibestand gegen den Katalog (2026-09-26) ──────────
-    # Der Waechter misst seit dem 2026-09-26 taeglich, seine Befunde hatten
-    # bis heute keine Alarmregel und damit auch keinen Meldeweg. Der Eintrag
-    # im Waechter-Register deckte nur den Herzschlag, nicht das Ergebnis.
-    #
-    # Die beiden Schadensfaelle auf 'warn' und nicht 'critical': eine fehlende
-    # Buchdatei ist Datenverlust, aber nachts nicht reparierbar, und der
-    # Bestand ist bis zur Umstellung ohnehin noch aus Calibre ableitbar. Wird
-    # die Bibliothek produktiv, gehoert `bibliothek-datei-fehlt` erneut
-    # angesehen: dann ist sie die einzige Kopie neben restic.
-    #
-    # Keine cooldown_key_fields: eine Bibliothek, ein Wirt, die Metrik ist
-    # eine Anzahl ohne unterscheidende Labels.
-    "bibliothek-datei-fehlt":            ("warn",     "normal", 86400,  []),
-    "bibliothek-datei-beschaedigt":      ("warn",     "normal", 86400,  []),
-    # Aufraeumarbeit, kein Schaden: stumm und wochenweise. Die Alarmregel
-    # wartet schon 25 h und meldet nur, was einen zweiten Tageslauf ueberlebt.
-    "bibliothek-datei-verwaist":         ("info",     "low",    604800, []),
-    # Die dritte Regel dieser Familie, `geteilte-quellen-pruefer-stumm`, steht
-    # seit 2026-09-20 nicht mehr hier: der Stillstand JEDES Waechters laeuft
-    # jetzt ueber `waechter-steht-still` weiter oben.
-    #
-    # Nachgezogen 2026-10-09, die Kennzahlen mit Stand `offen` im
-    # Betriebsvertrag. Beide Bestandsregeln auf 'warn' aus demselben Grund wie
-    # oben: der Verlust ist zum Meldezeitpunkt schon geschehen, nachts laesst
-    # sich daran nichts reparieren. Eilig ist einzig, dass es VOR dem naechsten
-    # pg_dump bemerkt wird -- der schreibt sonst den verlorenen Stand ueber den
-    # guten. Das ist ein Tag Zeit, kein Aufstehen.
-    "bibliothek-bestand-geschrumpft":    ("warn",     "normal", 86400,  []),
-    # Im haeufigsten Fall war es ein gewollter Aussortierlauf. Derselbe
-    # Cooldown wie oben, damit beide bei einem Vorfall, der beides ausloest,
-    # im selben Takt melden statt sich abzuwechseln.
-    "bibliothek-regal-eingebrochen":     ("warn",     "normal", 86400,  []),
-    # Verloren ist nichts, die verdraengte Fassung steht in der Tabelle.
-    # Gemeldet wird, dass niemand hineinsieht: stumm und wochenweise, wie die
-    # verwaisten Dateien.
-    "bibliothek-abgleichkonflikte-stauen": ("info",   "low",    604800, []),
-    # Stand seit dem 2026-10-06 in rules.yaml und fehlte hier -- derselbe
-    # Fall wie `vektorsuche-degradiert` weiter oben, und derselbe Grund, warum
-    # er auffiel: der Pruefer meldete sie als "OHNE ZUORDNUNG". Die Werte
-    # bestaetigen den vorgefundenen Ist-Zustand (info/low/eine Woche), sie
-    # aendern ihn nicht. Ohne den Eintrag haette der naechste Schreiblauf des
-    # Werkzeugs ueber eine Regel hinweggesehen, die es pflegen soll.
-    "bibliothek-index-rueckstand":       ("info",     "low",    604800, []),
 
-    # ── Nachgezogen 2026-10-09: die drei portal-handy-Regeln vom selben Tag ──
-    # Sie hatten keinen Meldeweg, weder hier noch in Grafana. Bei einer
-    # Regel mit `for: 25h`, die hoechstens einmal taeglich feuern kann, ist das
-    # VOLLSTAENDIGE Stille: der Sammelzaehler `alert-storm` greift erst ab fuenf
-    # Ereignissen und wird damit nie erreicht.
-    #
-    # Alle drei auf 'warn': es geht um die Bedienbarkeit auf dem Telefon, nicht
-    # um einen Ausfall. Nachts ist daran nichts zu tun.
-    #
-    # Eine Woche fuer die Geometrie, weil das ein Rueckstand ist und kein
-    # Vorfall -- die Zahl kann sich zwischen zwei Tageslaeufen gar nicht
-    # aendern. Die Alarmregel traegt in ihrem eigenen Kommentar schon die
-    # Sorge, dass eine staendig feuernde Regel abgeschaltet statt gelesen wird.
-    "portal-handy-befunde":              ("warn",     "normal", 604800, []),
-    # Taeglich: das ist ein Programmfehler, keine Unschoenheit. Die Flaeche
-    # kann dabei fertig aussehen und ist es nicht.
-    "portal-handy-skriptfehler":         ("warn",     "normal", 86400,  []),
-    # Taeglich, und von den dreien die wichtigste: eine Flaeche, die gar nicht
-    # laedt, laeuft nirgends ueber und hat keine zu kleinen Knoepfe. Ohne diese
-    # Regel waere ein kaputtes Portal die ruhigste Messung von allen.
-    "portal-handy-nicht-messbar":        ("warn",     "normal", 86400,  []),
 
-    # ── Nachgezogen 2026-10-02: dreizehn Regeln ohne jeden Meldeweg ──────
-    # Gefunden von interne Notiz. Das Muster dahinter
-    # ist wichtiger als die Liste: die zuletzt gebauten Waechter sind die
-    # stummen. Zigbee-Alarm und Tresor-Standby sind beide vom 2026-09-27, und
-    # beide bekamen ihre Prometheus-Regel und diesen Eintrag nicht.
-    #
-    # 7 Tage je Geraet: ein seit 99 bis 169 Tagen verschwundenes Zigbee-Geraet
-    # braucht keine taegliche Erinnerung, sondern eine Entscheidung. Auf der
-    # Liste haelt es danach die Wiedervorlage.
-    "zigbee-geraet-stumm":               ("warn",     "normal", 604800, ["geraet"]),
 
-    # ── Tresor-Standby: der Notweg zum Passworttresor ────────────────────
-    # Nur zwei der acht wecken, und der Grund ist die Umkehrbarkeit, nicht die
-    # Wichtigkeit: ein ausgesetzter oder veralteter Spiegel laesst sich morgens
-    # nachziehen, verlorene Eintraege und ein fehlgeschlagener Abgleich nicht.
-    "tresor-spiegel-nicht-stimmig":      ("critical", "high",   21600,  []),
-    "tresor-eintraege-geschrumpft":      ("critical", "high",   21600,  []),
-    # Keine cooldown_key_fields in der ganzen Gruppe: es gibt einen Tresor und
-    # einen Spiegel, die Metriken tragen kein unterscheidendes Label.
-    "tresor-spiegel-veraltet":           ("warn",     "normal", 43200,  []),
-    "tresor-spiegel-lange-ausgesetzt":   ("warn",     "normal", 86400,  []),
-    "tresor-spiegel-misst-nicht":        ("warn",     "normal", 43200,  []),
 
-    # ── Automations-Wirkungspruefung (interne Notiz) ──────
-    # Die Klasse: Home Assistant wirft bei `switch.turn_on` auf eine
-    # `unavailable`-Entitaet KEINEN Fehler. Eine Automation, deren Lampe fehlt,
-    # laeuft durch und gilt dort als erfolgreich gelaufen. Gemessen beim Bau am
-    # 2026-10-02: 13 von 34 Automationen in diesem Zustand, die aelteste seit
-    # 111 Tagen, darunter die komplette Beleuchtungssteuerung der Wohnung und
-    # vier Heizungs-Automationen.
-    #
-    # Nur die drei echten Befunde auf `warn`, die drei Buchhaltungs-Meldungen
-    # auf `info`. Der Grund ist derselbe wie beim Zigbee-Block: wer eine
-    # Entscheidungsvorlage weckt, stumpft den Kanal fuer die Ausfaelle ab.
-    #
-    # 7 Tage je Automation UND Entitaet: ein Geraet, das seit Wochen fehlt,
-    # braucht keine taegliche Erinnerung. Auf der Liste haelt es danach die
-    # Wiedervorlage.
-    "automation-schaltet-ins-leere":     ("warn",     "normal", 604800, ["automation", "entitaet"]),
-    "automation-waechter-misst-nicht":   ("warn",     "normal", 21600,  []),
-    "automation-datei-unlesbar":         ("warn",     "normal", 21600,  []),
-    # Die drei leisen. `ausnahme-ueberholt` ist oft eine gute Nachricht (ein
-    # Geraet ist zurueck), `nie-ausgeloest` und `lange-entschuldigt` sind
-    # Entscheidungsvorlagen ohne Dringlichkeit. 30 Tage beim mittleren, weil
-    # die Frist dort ohnehin 180 Tage ist.
-    "automation-ausnahme-ueberholt":     ("info",     "low",    86400,  []),
-    "automation-ziel-lange-entschuldigt":("info",     "low",    2592000, ["entitaet"]),
-    "automation-nie-ausgeloest":         ("info",     "low",    604800, []),
-    "tresor-waechter-stumm":             ("warn",     "normal", 43200,  []),
-    # Das Gegenstueck, das dem Waechter fehlte. `tresor-waechter-stumm`
-    # rechnet `time() - <metrik>` und braucht dafuer einen aktuellen Messpunkt;
-    # stirbt der Waechter, verschwindet die Metrik und die Regel hoert auf zu
-    # rechnen, statt zu feuern. Gemessen am 2026-10-02: letzter Lauf 2026-09-27,
-    # fuenf Tage unbemerkt. Der Spiegel hatte sein `absent()` schon.
-    "tresor-waechter-misst-nicht":       ("warn",     "normal", 43200,  []),
-    "tresor-uebernahme-offen":           ("warn",     "normal", 43200,  []),
-    # Die Vault-Push-Kette (2026-10-15). Der Dienst lief zwei Wochen und tat
-    # strukturell nichts (geratener Remote-Name `origin` gegen die Hausregel
-    # `gitea`), meldete dabei `done` und endete mit rc=0. Gemessen: registry 45
-    # und homelab-vault 18 Commits Rueckstand. Schluessel `vault` beim
-    # Rueckstand, denn es haengen typisch mehrere Repos gleichzeitig und ein
-    # gemeinsamer Cooldown verschluckte alle bis auf das erste.
-    "vault-push-rueckstand":             ("warn",     "normal", 43200,  ["vault"]),
-    "vault-push-fehler":                 ("warn",     "normal", 43200,  []),
     # Neustartschleife (2026-10-15). `warn` und nicht `critical`: der Wirt
     # traegt es, und ein Dienst in der Schleife ist ein Zustand fuer den
     # naechsten Blick, kein Weckgrund. Schluessel `name`, weil bei einem
     # Port-Streit typisch zwei Container betroffen sind und ein gemeinsamer
     # Cooldown den zweiten verschluckte.
     "container-neustartschleife":        ("warn",     "normal", 21600,  ["name"]),
-    # Die dritte Luecke derselben Familie (2026-10-15): nicht "Waechter
-    # stumm" und nicht "misst nicht", sondern er laeuft, misst richtig und
-    # KANN SEIN ERGEBNIS NICHT MELDEN -- `waechter.env` fehlte auf node1 seit
-    # dem 27.09., und `melden()` wird erst nach `uebernehmen.sh` gerufen.
-    # Tages-Cooldown statt der 43200 der Nachbarn: die Abhilfe ist ein
-    # Owner-Handgriff von einer Minute, und bis er passiert, aendert eine
-    # zweite Meldung am selben Tag nichts als die Abstumpfung des Kanals.
-    "tresor-waechter-ohne-meldeweg":     ("warn",     "normal", 86400,  []),
 
-    # ── gamehost und der Tresor-Zertifikatspfad ───────────────────────────
-    # Diese vier galten im Abgleich als von Grafana gedeckt, weil er ueber
-    # Metriknamen vergleicht. Grafana hat Regeln auf `probe_success` und
-    # `probe_ssl_earliest_cert_expiry`, aber nur fuer `blackbox-netcup-http`,
-    # `blackbox-icmp`, `blackbox-service-http|blackbox-node1-local` und
-    # `blackbox-core-tcp`. Gleiche Metrik, anderer Job, keine Deckung.
-    "gamehost-site-down":                 ("warn",     "normal", 3600,   ["instance"]),
-    "gamehost-cert-laeuft-ab":            ("warn",     "normal", 86400,  ["instance"]),
-    "vaultwarden-cert-laeuft-ab":        ("warn",     "normal", 86400,  []),
-    "vaultwarden-cert-probe-fehlt":      ("warn",     "normal", 43200,  []),
     # Der einzige auf dem stummen Kanal: severity info, und der Inhalt ist eine
     # Entwarnung mit einer Aufgabe dahinter, kein Vorfall.
 
-    # ── Der Pruefer der Meldewege meldet jetzt selbst (2026-10-02) ────────
-    # Die critical-Variante weckt, und zwar als einzige dieser Runde: sie
-    # sagt, dass der lauteste Alarm des Hauses ins Leere geht. Die breite
-    # Variante auf 'warn' mit 24 h Ruhe, weil der Abgleich alle 6 h laeuft und
-    # derselbe Befund sonst viermal taeglich klopft, bis jemand eine Regel
-    # anlegt. Keine key_fields: beide Metriken sind Anzahlen ueber den ganzen
-    # Bestand und tragen kein unterscheidendes Label.
-    "alarm-ohne-meldeweg-critical":      ("critical", "high",   21600,  []),
-    "alarm-ohne-meldeweg":               ("warn",     "normal", 86400,  []),
-    # Bewusst dieselbe Lautstaerke wie der Befund selbst, nicht leiser,
-    # dieselbe Begruendung wie bei geteilte-quelle-nicht-messbar: "ich kann
-    # nicht messen" verdeckt genau den Fall, den die Regel darueber finden
-    # soll, und eine leisere Einstufung machte die Blindheit zur bequemeren
-    # von beiden Antworten.
-    "alarm-meldeweg-abgleich-misst-nicht": ("warn",   "normal", 86400,  []),
 
     # --- sieben Zustellwege nachgezogen, 2026-10-11 ---
-    # Keine davon weckt: bei allen sieben ist die richtige Reaktion ein Entscheid
-    # oder ein Handgriff am naechsten Tag. Die Begruendung je Regel steht im
-    # Kommentarblock vor ihr in rules.yaml; hier stehen nur die Werte, mit denen
-    # `--pruefen` sie gegenliest.
-    # Vier der sieben waren am 11.10. noch nicht ausgerollt und deshalb selbst
-    # fuer den Meldeweg-Pruefer unsichtbar, weil der Prometheus liest und nicht
-    # die Datei. Dafuer gibt es seit demselben Tag `abgleich.py --aus-datei`.
-    "backup-pfadliste-nicht-verglichen": ("warn",   "high",   86400,  ["host"]),
-    "kiwix-sprachsuche-tot":             ("warn",   "high",   86400,  []),
-    "kiwix-sprachsuche-messkette-aus":   ("info",   "low",    86400,  []),
-    # Cooldown je Spiel: zwei Spiele mit lueckenhafter Sicherung sind zwei
-    # Befunde, und ein regel-globaler Deckel verschluckte den zweiten.
-    "welt-sicherung-lueckenhaft":        ("warn",   "high",   86400,  ["spiel"]),
-    "welt-deckungspruefung-steht-still": ("warn",   "high",   86400,  []),
-    # Terraria-Mod-Satz (2026-10-15). Die ersten zwei wecken, weil der Verlust
-    # laeuft, waehrend der Alarm steht: eine Welt ohne ihren Mod verliert dessen
-    # Bloecke und Items beim naechsten Autosave, und der kommt alle 10 min.
-    # Nachts weckt es praktisch nie, ein Server ohne Spieler geht nach 20 min aus.
-    # Cooldown je Spiel, sonst verschluckt die erste betroffene Instanz die zweite.
-    "terraria-mod-still-deaktiviert":    ("critical", "high", 1800,   ["spiel"]),
-    "terraria-mod-nicht-geladen":        ("critical", "high", 1800,   ["spiel"]),
-    # Kein Schaden, aber der naechste Start bricht ab. Halbtages-Cooldown: die
-    # Reaktion ist ein Mod nachladen, kein Aufstehen.
-    "terraria-modsatz-unvollstaendig":   ("warn",   "high",   43200,  ["spiel"]),
-    "terraria-modsatz-pruefung-steht-still": ("warn", "high", 86400,  []),
-    "zigbee-bekannt-stumm-aber-da":      ("info",   "low",    86400,  ["geraet"]),
-    # Wochen-Cooldown: ein Tippfehler in einer Ausnahmeliste bleibt bestehen,
-    # bis jemand ihn korrigiert, und taeglich daran erinnert zu werden stumpft
-    # den Kanal ab, ohne den Befund zu aendern.
-    "zigbee-ausnahme-wirkungslos":       ("info",   "low",    604800, []),
-    "zigbee-ableitung-wirkungslos":      ("info",   "low",    604800, []),
-    # Netzzustand statt Einzelgeraet (2026-10-15, Regeln aus einer parallelen
-    # Sitzung, Meldeweg hier nachgezogen). `high` wie bei den uebrigen
-    # Zigbee-Wegen, damit es auf Discord ankommt: an diesen Geraeten haengt die
-    # Heizungssteuerung. Beide ohne Schluessel, denn beide Ausdruecke
-    # aggregieren ueber das ganze Netz und tragen kein Geraete-Label.
-    "zigbee-mehrere-geraete-stumm":      ("warn",   "high",   86400, []),
-    "zigbee-ohne-router":                ("warn",   "high",   86400, []),
     # Die loeschgeschuetzte Zweitsicherung auf dem jetson (2026-10-15).
     # `warn` und nicht `critical`: faellt dieser Satz aus, ist kein Datum weg
     # und die Off-Site-Kopie nach Hetzner laeuft weiter. Weg ist der Schutz
@@ -967,100 +332,12 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # `abgleich.py` sie als "OHNE JEDEN MELDEWEG" -- eine scharfe Regel ohne
     # Zustellung ist dieselbe Stille, nur eine Ebene hoeher.
     "zweitziel-sicherung-fehlgeschlagen": ("warn",  "high",   43200, ["host"]),
-    # Schluessel `pfad` und nicht `host`: bei einer Rechteaenderung trifft es
-    # mehrere Pfade gleichzeitig, und mit host-Schluessel verschluckte der
-    # erste gemeldete jeden weiteren.
-    "zweitziel-pfad-nicht-lesbar":       ("warn",   "high",   43200, ["pfad"]),
     "finanzen-kuendigungsfrist":          ("warn",     "normal", 86400, []),
     "finanzen-kuendigung-unbekannt":      ("info",     "low",    604800, []),
+    # Garantie-Alarm aus dem Lager (2026-11-14): sechs Tage, damit eine Sache im
+    # 14-Tage-Fenster drei Mal kommt (14, 8, 2 Tage vorher), je Kennung.
+    "lager-garantie-laeuft-ab":           ("warn",     "normal", 518400, ["kennung"]),
     # --- Meldewege nachgezogen 2026-10-24: Schwere der Alarmregel, nie lauter ---
-    "farmwelt-reset-gescheitert": ("warn", "normal", 21600, []),
-    "minecraft-direktweg-bricht-ab": ("warn", "normal", 21600, []),
-    "minecraft-direktweg-ungenutzt": ("info", "low", 86400, []),
-    "minecraft-job-bonus-gescheitert": ("warn", "normal", 21600, []),
-    "minecraft-job-parkplatz-gescheitert": ("warn", "normal", 21600, []),
-    "minecraft-job-stand-wartet-zu-lange": ("info", "low", 86400, []),
-    "minecraft-raenge-pflege-gescheitert": ("warn", "normal", 21600, []),
-    "minecraft-selbstpruefung-steht-still": ("warn", "normal", 21600, []),
-    "minecraft-verweise-ins-leere": ("warn", "normal", 21600, []),
-    "spiel-ohne-sicherung": ("warn", "normal", 21600, ["spiel", "welt"]),
-    "spiel-sicherung-dauerhaft-abgelehnt": ("warn", "normal", 21600, ["spiel", "welt"]),
-    "spiel-sicherung-veraltet": ("warn", "normal", 21600, ["spiel", "welt"]),
-    "spiele-sicherung-metrik-fehlt": ("warn", "normal", 21600, []),
-    "spiele-sicherung-steht-still": ("warn", "normal", 21600, []),
-    "sync-arbeit-liegt-unveroeffentlicht": ("warn", "normal", 21600, ["repo"]),
-    "sync-klon-haengt-zurueck": ("warn", "normal", 21600, ["repo"]),
-    "sync-messung-gescheitert": ("warn", "normal", 21600, []),
-    "karten-datei-fehlt": ("warn", "normal", 21600, []),
-    "karten-datenstand-alt": ("warn", "normal", 21600, []),
-    "karten-gattung-zeigt-ins-leere": ("warn", "normal", 21600, []),
-    "karten-rohdaten-lauf-gescheitert": ("warn", "normal", 21600, []),
-    "karten-rohdaten-nicht-erneuert": ("warn", "normal", 21600, []),
-    "karten-rohdaten-verbraucher-abweichend": ("warn", "normal", 21600, []),
-    "karten-satz-nicht-ausgeliefert": ("warn", "normal", 21600, []),
-    "karten-wache-kann-nicht-messen": ("warn", "normal", 21600, []),
-    "karten-fahrplan-laeuft-ab": ("warn", "normal", 21600, []),
-    "karten-otp-fahrplan-laeuft-ab": ("warn", "normal", 21600, []),
-    "karten-verbindungssuche-findet-nichts": ("warn", "normal", 21600, []),
-    "karten-spur-keine-neuen-fahrten": ("warn", "normal", 21600, []),
-    "karten-spur-matching-quote-niedrig": ("warn", "normal", 21600, []),
-    "karten-spur-matching-staut": ("warn", "normal", 21600, []),
-    "karten-spur-matching-fehler": ("info", "low", 21600, []),
-    "karten-spur-sicherung-fehlt": ("warn", "normal", 21600, []),
-    "karten-spur-sicherung-hinkt": ("warn", "normal", 21600, []),
-    "karten-spur-geraeteverwaltung-offen": ("info", "low", 21600, []),
-    # Zweite Schicht hinter Authelia (Audit KARTEN-002), in Prometheus
-    # `warning` mit `for: 24h`. Leise, anders als die drei Schranken darunter:
-    # der Vhost bleibt dicht, offen ist nur der Weg an ihm vorbei aus dem Haus.
-    "karten-spur-proxy-schranke-offen": ("warn", "normal", 21600, []),
-    # Die drei Wege zur Bewegungshistorie wecken, ihre sechs Geschwister
-    # darueber nicht. Der Unterschied ist die richtige Reaktion: ein gestautes
-    # Matching sieht man sich morgen an und es wird nicht schlimmer, eine
-    # offene Schranke laeuft mit jeder Stunde weiter. Cooldown deshalb 1 h
-    # statt 6. Alle drei ohne Schluessel, es gibt genau einen Dienst.
-    "karten-spur-schranke-offen": ("critical", "high", 3600, []),
-    "karten-spur-direktport-offen": ("critical", "high", 3600, []),
-    "karten-spur-sync-weg-offen": ("critical", "high", 3600, []),
-    "medien-abgleich-veraltet": ("warn", "normal", 21600, []),
-    "medien-vault-bericht-veraltet": ("warn", "normal", 21600, ["wirt"]),
-    "medien-vault-kein-wirt": ("warn", "normal", 21600, []),
-    "medien-lager-spiegel-veraltet": ("warn", "normal", 21600, []),
-    "portal-sagt-etwas-falsches": ("warn", "normal", 21600, []),
-    "portal-selbstpruefung-leer": ("warn", "normal", 21600, []),
-    # Patchstand der selbst gebauten Images (Gruppe homelab-haertung, neu am
-    # 2026-10-26). Alle fuenf auf `warn`, auch die mit severity critical, und das
-    # ist dieselbe Entscheidung wie beim Speicherplatz weiter oben: die richtige
-    # Reaktion auf einen zwei Monate alten Patchstand ist "morgen nachziehen",
-    # nicht Aufstehen um 3 Uhr. Der Zustand besteht dann schon seit sechzig Tagen
-    # und wird in einer Nacht nicht schlimmer.
-    # `haertung-lange-veraltet` bekommt trotzdem `high`: es soll in der Liste
-    # vor den anderen stehen, ohne zu wecken.
-    # Cooldown 24 h und nicht 6 h: die Messung laeuft im Wochentakt, ein
-    # Alarm je Tag und Dienst ist hier schon die obere Grenze des Sinnvollen.
-    "haertung-veraltet": ("warn", "normal", 86400, ["wirt", "dienst"]),
-    "haertung-lange-veraltet": ("warn", "high", 86400, ["wirt", "dienst"]),
-    "haertung-wirt-nicht-erreicht": ("warn", "normal", 86400, ["wirt"]),
-    "haertung-messung-leer": ("warn", "normal", 86400, []),
-    "haertung-frist-abweichend": ("warn", "normal", 86400, []),
-    # Uhrzeit (ZIELBILD 58, 2026-11-04). Auch die kritische Stufe weckt nicht:
-    # 5 s Abweichung brechen Kerberos im AD-Lab (on-demand) und machen Zeitreihen
-    # ungenau, aber nichts davon rechtfertigt ein Aufstehen um 3 Uhr. high, weil
-    # ab 5 s Anmeldungen scheitern. Je Wirt, damit ein zweiter Wirt nicht im
-    # Cooldown des ersten verschwindet.
-    "uhrzeit-abweichung":                ("warn",     "normal", 43200, ["host"]),
-    "uhrzeit-abweichung-kritisch":       ("warn",     "high",   7200,  ["host"]),
-    # Design-Waechter (2026-11-02): Befund im ausgelieferten Stand, verschwindet
-    # nicht von selbst, Waechter laeuft taeglich. Je Pruefung ein Subjekt.
-    "design-quelle-weicht-ab":           ("warn",     "normal", 86400, ["pruefung"]),
-    # GitHub-DR-Spiegel (ZIELBILD 11, 2026-11-04): Befund statt roter Unit.
-    # Taeglicher Lauf, ein Tag Abkuehlung genuegt; kein Subjekt (ein Spiegel).
-    "github-mirror-unbewertet":          ("warn",     "normal", 86400, []),
-    "github-mirror-misst-nicht":         ("warn",     "normal", 86400, []),
-    # Jellyfin NFO-Weg (ZIELBILD 55, 2026-11-05). Titel ohne Kennung ist
-    # Nachschlagen, kein Ausfall: stumm, einmal am Tag je Bereich und Art.
-    "jellyfin-titel-ohne-kennung":       ("info",     "low",    86400, ["bereich", "art"]),
-    "jellyfin-nfo-laeuft-nicht":         ("warn",     "normal", 21600, ["bereich"]),
-    "testfragen-quote-gefallen":         ("warn",     "normal", 604800, []),
     "nachtbericht":                      ("warn",     "normal", 43200, []),
 }
 

@@ -19,7 +19,7 @@ from app.logging_config import get_logger
 from app.mqtt import publisher
 from app.notify import IrcClient, NotifyClient, NtfyClient
 from app.registry import resolve_services
-from app.rules import Event, Rule
+from app.rules import Event, Rule, rueckfall_annotation
 
 log = get_logger(__name__)
 
@@ -71,8 +71,48 @@ def _contextualize_payload(topic: str, payload: dict[str, Any]) -> dict[str, Any
     return enriched
 
 
-def _effective_ntfy(rule: Rule) -> dict[str, Any]:
+# Auffangregel: Kanal aus der Annotation `kanal`, sonst aus `severity`.
+# Prioritaet je Kanal wie in scripts/kanaele-zuordnen.py: critical weckt (und
+# geht nach Discord), warn leise, info stumm und ohne KI-Deutung.
+_KANAL_AUS_SEVERITY = {"critical": "critical", "warning": "warn", "info": "info"}
+_KANAL = {
+    "critical": ("host-critical", "high"),
+    "warn": ("host-warn", "normal"),
+    "info": ("host-info", "low"),
+}
+
+
+def _rueckfall_kanal(payload: dict[str, Any]) -> str | None:
+    kanal = rueckfall_annotation(payload, "kanal").lower()
+    if kanal in _KANAL:
+        return kanal
+    if kanal:
+        log.warning("rueckfall.kanal_unbekannt", kanal=kanal)
+    severity = str((payload or {}).get("severity") or "").lower()
+    return _KANAL_AUS_SEVERITY.get(severity)
+
+
+def _meldename(rule: Rule, event: Event | None = None) -> str:
+    """Name in Titel und IRC: die Regel-ID, bei der Auffangregel der Alarmname."""
+    if rule.rueckfall and event is not None:
+        labels = (event.payload or {}).get("labels") or {}
+        name = labels.get("alertname") if isinstance(labels, dict) else None
+        if not name:
+            # homelab/alerts/<Name>/fired
+            teile = event.topic.split("/")
+            name = teile[2] if len(teile) > 2 else ""
+        if name:
+            return str(name)
+    return rule.id
+
+
+def _effective_ntfy(rule: Rule, event: Event | None = None) -> dict[str, Any]:
     ntfy = dict(rule.ntfy or {})
+    if rule.rueckfall:
+        event = event or (rule.events[-1] if rule.events else None)
+        kanal = _rueckfall_kanal(event.payload or {}) if event else None
+        if kanal:
+            ntfy["topic"], ntfy["priority"] = _KANAL[kanal]
     escalated_priority = _event_priority(rule)
     if escalated_priority and _priority_rank(escalated_priority) > _priority_rank(ntfy.get("priority", "")):
         ntfy["priority"] = escalated_priority
@@ -92,7 +132,14 @@ def _render_hint(rule: Rule, trigger_event: Event | None = None) -> str:
     Werte hat es sie erfunden ('Der Service node1 ist fehlgeschlagen'), node1 ist
     ein Host, keine Unit; vgl. interne Notiz).
     """
-    hint = rule.triage.get("hint", "")
+    return _render_triage_feld(rule, "hint", trigger_event)
+
+
+def _render_triage_feld(rule: Rule, feld: str, trigger_event: Event | None = None) -> str:
+    """Rendert ein Textfeld aus `triage` (hint, erster_schritt) wie oben beschrieben."""
+    if rule.rueckfall:
+        return _rueckfall_text(rule, feld, trigger_event)
+    hint = rule.triage.get(feld, "") or ""
     if not hint or "{{" not in hint:
         return hint
     # Gegen das AUSLOESENDE Ereignis rendern, nicht gegen das zuletzt
@@ -110,8 +157,30 @@ def _render_hint(rule: Rule, trigger_event: Event | None = None) -> str:
     except Exception as exc:
         # Ein kaputter Platzhalter darf die Meldung nicht verschlucken,
         # lieber der Rohtext als gar kein Alarm.
-        log.warning("hint.render_failed", rule_id=rule.id, error=str(exc))
+        log.warning("hint.render_failed", rule_id=rule.id, feld=feld, error=str(exc))
         return hint
+
+
+def _rueckfall_text(rule: Rule, feld: str, trigger_event: Event | None) -> str:
+    """Texte der Auffangregel stehen in der Prometheus-Regel, eine Quelle je Alarm.
+
+    Prometheus hat die Vorlagen ({{ $labels.host }}) beim Ausliefern schon
+    eingesetzt, hier wird nur noch gewaehlt: Hinweis aus `hinweis`, sonst
+    `description`, sonst `summary`; erster Schritt nur aus `erster_schritt`.
+    """
+    event = trigger_event or (rule.events[-1] if rule.events else None)
+    if event is None:
+        return ""
+    payload = event.payload or {}
+    if feld == "erster_schritt":
+        return rueckfall_annotation(payload, "erster_schritt")
+    if feld == "hint":
+        for name in ("hinweis", "description", "summary"):
+            text = rueckfall_annotation(payload, name)
+            if text:
+                return text
+        return str(payload.get("summary") or "")
+    return ""
 
 
 # ntfy-Prioritaeten: 5=max (Klingelton bricht durch), 4=high, 3=default, 2=low, 1=min.
@@ -131,10 +200,12 @@ def _build_suggestion(rule: Rule) -> dict[str, Any]:
     payloads = [e.payload for e in rule.events[-5:]]
     latest_event = rule.events[-1] if rule.events else None
     impacted = _safe_resolve_services(latest_event.topic, latest_event.payload or {}) if latest_event else []
-    ntfy = _effective_ntfy(rule)
+    trigger = rule.trigger_event or latest_event
+    ntfy = _effective_ntfy(rule, trigger)
     return {
         "rule_id": rule.id,
-        "hint": rule.triage.get("hint", ""),
+        "alarm": _meldename(rule, trigger),
+        "hint": _render_hint(rule, trigger) if rule.rueckfall else rule.triage.get("hint", ""),
         "memory_tags": rule.triage.get("memory_tags", []),
         "events_in_window": len(rule.events),
         "sample_topics": latest_topics,
@@ -175,7 +246,7 @@ def _build_reasoning_prompt(rule: Rule, trigger_event: Event | None = None) -> t
     payload = _contextualize_payload(event.topic, event.payload or {})
     impacted = _safe_resolve_services(event.topic, payload)
     user_parts = [
-        f"regel {rule.id}",
+        f"regel {_meldename(rule, event)}",
     ]
     if payload.get("service"):
         user_parts.append(f"service {payload['service']}")
@@ -236,7 +307,7 @@ async def run_reasoning(
     # technische Ursache an einen Satz, der nur aus Messwerten besteht.
     # Rueckwaertskompatibel: fehlt das Feld, gilt genau das alte Verhalten.
     if rule.triage.get("ohne_deutung") or _priority_rank(
-        _effective_ntfy(rule).get("priority", "")
+        _effective_ntfy(rule, event).get("priority", "")
     ) <= _priority_rank("low"):
         result: dict[str, Any] = {"text": "", "source": "uebersprungen", "elapsed_ms": 0}
     else:
@@ -273,14 +344,21 @@ async def run_reasoning(
     # Zustellung: ntfy traegt alles mit gesetztem Topic (die drei Kanaele
     # host-critical/-warn/-info trennen die Dringlichkeit), Discord nur ab high.
     # Beide Clients sind fail-silent: keiner blockiert den anderen.
-    effective = _effective_ntfy(rule)
+    effective = _effective_ntfy(rule, event)
     priority = effective.get("priority", "")
     rank = _priority_rank(priority)
     topic = effective.get("topic")
     if (topic or rank >= _DISCORD_MIN_RANK) and (notify is not None or ntfy is not None):
         hint = _render_hint(rule, event)
-        title = f"Homelab: {rule.id}"
-        body_parts = [hint] if hint else []
+        title = f"Homelab: {_meldename(rule, event)}"
+        # Der erste Schritt steht vor der Erklaerung: nachts auf dem Handy soll
+        # der Befehl ohne Scrollen sichtbar sein, die Hints sind im Median ~450
+        # Zeichen lang. Pflicht fuer host-critical, geprueft von
+        # docker/monitoring/handlungstexte-pruefen.py.
+        erster_schritt = _render_triage_feld(rule, "erster_schritt", event)
+        body_parts = [f"Erster Schritt: {erster_schritt}"] if erster_schritt else []
+        if hint:
+            body_parts.append(hint)
         if verlauf_zeile:
             body_parts.append("\n" + verlauf_zeile)
         if reasoning_text:
@@ -310,8 +388,11 @@ async def run_reasoning(
     # Vollstaendigkeit dort nichts. Was hier fehlt, fehlt spaeter beim Nachlesen.
     # Eine Zeile statt eines Blocks, weil IRC zeilenweise gelesen wird.
     if irc is not None:
-        hinweis = _render_hint(rule, event) or rule.id
-        zeile = f"{rule.id}: {hinweis}"
+        hinweis = _render_hint(rule, event) or _meldename(rule, event)
+        zeile = f"{_meldename(rule, event)}: {hinweis}"
+        erster_schritt = _render_triage_feld(rule, "erster_schritt", event)
+        if erster_schritt:
+            zeile += f" | Erster Schritt: {erster_schritt}"
         if reasoning_text:
             zeile += f" | Einschaetzung (KI): {reasoning_text}"
         if rule.suppressed_at_last_fire:

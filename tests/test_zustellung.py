@@ -251,6 +251,28 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
         _, ntfy = _lauf(regel, llm=FakeLLM(""))
         self.assertIn("Quelle: uebersprungen", ntfy.aufrufe[0]["message"])
 
+    def test_erster_schritt_steht_vor_der_erklaerung(self):
+        """Nachts auf dem Handy soll der Befehl ohne Scrollen sichtbar sein."""
+        regel = _regel(
+            prioritaet="high",
+            topic="host-critical",
+            hint="Lange Erklaerung, warum das wichtig ist.",
+            payload={"service": "kalender"},
+        )
+        regel.triage["erster_schritt"] = "docker logs --tail 50 {{ event.payload.service }}"
+        _, ntfy = _lauf(regel)
+        nachricht = ntfy.aufrufe[0]["message"]
+        self.assertTrue(
+            nachricht.startswith("Erster Schritt: docker logs --tail 50 kalender\n"), nachricht
+        )
+        self.assertIn("Lange Erklaerung", nachricht)
+
+    def test_gegenprobe_ohne_erster_schritt_keine_leere_zeile(self):
+        regel = _regel(prioritaet="high", topic="host-critical", hint="Nur Erklaerung.")
+        _, ntfy = _lauf(regel)
+        self.assertNotIn("Erster Schritt", ntfy.aufrufe[0]["message"])
+        self.assertTrue(ntfy.aufrufe[0]["message"].startswith("Nur Erklaerung."))
+
 
 if __name__ == "__main__":
     unittest.main()
