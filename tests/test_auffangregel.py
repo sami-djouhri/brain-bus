@@ -61,17 +61,18 @@ def _sturm() -> Rule:
     )
 
 
-def _alarm(name: str, *, fp: str = "fp1", severity: str = "warning", **annotations) -> tuple[str, dict]:
-    return (
-        f"homelab/alerts/{name}/fired",
-        {
-            "fingerprint": fp,
-            "severity": severity,
-            "labels": {"alertname": name, "severity": severity, "host": "host"},
-            "summary": f"{name} kurz",
-            "annotations": {"summary": f"{name} kurz", **annotations},
-        },
-    )
+def _alarm(name: str, *, fp: str = "fp1", severity: str = "warning", kurz_id: str | None = None,
+           **annotations) -> tuple[str, dict]:
+    payload = {
+        "fingerprint": fp,
+        "severity": severity,
+        "labels": {"alertname": name, "severity": severity, "host": "host"},
+        "summary": f"{name} kurz",
+        "annotations": {"summary": f"{name} kurz", **annotations},
+    }
+    if kurz_id is not None:
+        payload["kurz_id"] = kurz_id
+    return f"homelab/alerts/{name}/fired", payload
 
 
 def _ids(engine: RuleEngine, topic: str, payload: dict) -> list[str]:
@@ -144,20 +145,12 @@ class Ruhezeit(unittest.TestCase):
         self.assertIsNone(rules.dauer_sekunden("bald"))
 
 
-class FakeNotify:
-    def __init__(self) -> None:
-        self.aufrufe: list[dict] = []
-
-    async def notify(self, *, title: str, message: str, urgent: bool = False) -> None:
-        self.aufrufe.append({"title": title, "message": message})
-
-
 class FakeNtfy:
     def __init__(self) -> None:
         self.aufrufe: list[dict] = []
 
-    async def publish(self, *, title: str, message: str, topic=None, priority: str = "") -> None:
-        self.aufrufe.append({"title": title, "message": message, "topic": topic, "priority": priority})
+    async def publish(self, *, title: str, message: str, topic=None, priority: str = "", click: str = "") -> None:
+        self.aufrufe.append({"title": title, "message": message, "topic": topic, "priority": priority, "click": click})
 
 
 class FakeLLM:
@@ -177,11 +170,11 @@ async def _verlauf_stub(*args, **kwargs) -> str:
     return ""
 
 
-def _zustellen(name: str, **kw) -> tuple[FakeNotify, FakeNtfy, FakeLLM]:
+def _zustellen(name: str, **kw) -> tuple[FakeNtfy, FakeLLM]:
     engine = RuleEngine([_auffang()])
     topic, payload = _alarm(name, **kw)
     (regel,) = engine.on_event(topic, payload, retained=False)
-    notify, ntfy, llm = FakeNotify(), FakeNtfy(), FakeLLM()
+    ntfy, llm = FakeNtfy(), FakeLLM()
     with (
         mock.patch.object(pipeline, "_mqtt_publish_raw"),
         mock.patch.object(pipeline.actions, "dispatch", _dispatch_stub),
@@ -189,16 +182,28 @@ def _zustellen(name: str, **kw) -> tuple[FakeNotify, FakeNtfy, FakeLLM]:
     ):
         asyncio.run(
             pipeline.run_reasoning(
-                regel, "fp", llm, notify=notify, ntfy=ntfy, trigger_event=regel.trigger_event
+                regel, "fp", llm, ntfy=ntfy, trigger_event=regel.trigger_event
             )
         )
-    return notify, ntfy, llm
+    return ntfy, llm
 
 
 class Zustellung(unittest.TestCase):
     def test_titel_traegt_den_alarmnamen_nicht_die_regel(self):
-        _, ntfy, _ = _zustellen("PlatteVoll")
+        ntfy, _ = _zustellen("PlatteVoll")
         self.assertEqual(ntfy.aufrufe[0]["title"], "Homelab: PlatteVoll")
+
+    def test_titel_traegt_die_kurze_alarm_id(self):
+        """ZIELBILD 99 (5): dieselbe Kennung wie in Tardis-Web und -App, vom alerts-Dienst vergeben."""
+        ntfy, _ = _zustellen("PlatteVoll", severity="critical", kurz_id="A-7K2Q")
+        self.assertEqual(ntfy.aufrufe[0]["title"], "Homelab A-7K2Q: PlatteVoll")
+        # Antippen oeffnet die Tardis-Uebersicht bei genau diesem Alarm.
+        self.assertTrue(ntfy.aufrufe[0]["click"].endswith("#overview/A-7K2Q"))
+
+    def test_gegenprobe_kennung_kein_text_wird_ignoriert(self):
+        ntfy, _ = _zustellen("PlatteVoll", kurz_id="")
+        self.assertEqual(ntfy.aufrufe[0]["title"], "Homelab: PlatteVoll")
+        self.assertEqual(ntfy.aufrufe[0]["click"], "")
 
     def test_kanal_aus_severity(self):
         for severity, topic, prio in (
@@ -207,22 +212,16 @@ class Zustellung(unittest.TestCase):
             ("info", "host-info", "low"),
         ):
             with self.subTest(severity=severity):
-                _, ntfy, _ = _zustellen("A", severity=severity)
+                ntfy, _ = _zustellen("A", severity=severity)
                 self.assertEqual(ntfy.aufrufe[0]["topic"], topic)
                 self.assertEqual(ntfy.aufrufe[0]["priority"], prio)
 
     def test_annotation_kanal_schlaegt_severity(self):
-        _, ntfy, _ = _zustellen("A", severity="warning", kanal="critical")
+        ntfy, _ = _zustellen("A", severity="warning", kanal="critical")
         self.assertEqual(ntfy.aufrufe[0]["topic"], "host-critical")
 
-    def test_discord_nur_fuer_critical(self):
-        notify, _, _ = _zustellen("A", severity="critical")
-        self.assertEqual(len(notify.aufrufe), 1)
-        notify, _, _ = _zustellen("A", severity="warning")
-        self.assertEqual(notify.aufrufe, [])
-
     def test_erster_schritt_und_hinweis_aus_den_annotations(self):
-        _, ntfy, _ = _zustellen(
+        ntfy, _ = _zustellen(
             "A", severity="critical", hinweis="Platte auf host voll.",
             erster_schritt="df -h /", description="lang",
         )
@@ -233,11 +232,11 @@ class Zustellung(unittest.TestCase):
 
     def test_ohne_hinweis_kommt_die_description_an(self):
         """Der alte Mangel: die Prometheus-description erreichte das Handy nie."""
-        _, ntfy, _ = _zustellen("A", description="Beschreibung aus Prometheus")
+        ntfy, _ = _zustellen("A", description="Beschreibung aus Prometheus")
         self.assertIn("Beschreibung aus Prometheus", ntfy.aufrufe[0]["message"])
 
     def test_info_ohne_ki_deutung(self):
-        _, _, llm = _zustellen("A", severity="info")
+        _, llm = _zustellen("A", severity="info")
         self.assertEqual(llm.aufrufe, 0)
 
 

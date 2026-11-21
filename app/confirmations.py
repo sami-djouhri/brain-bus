@@ -1,9 +1,14 @@
 """
 Confirmation-Flow:
-1. brain-bus actions.dispatch() für risk:medium → request_confirmation()
-   → INSERT confirmations row + POST host-junior /confirm
-2. User klickt Button in Discord → junior POST /api/confirmations/{id}/resolve
+1. brain-bus actions.dispatch() für risk:medium → request()
+   → INSERT confirmations row (die Warteschlange ist die Wahrheit) + ntfy-Hinweis
+2. Owner gibt in Tardis (Ops, Freigaben) frei oder lehnt ab
+   → Tardis POST /api/confirmations/{id}/resolve
 3. brain-bus validiert shared-secret, UPDATE confirmation, executes tool, audits.
+
+Bis 2026-11-20 lief Schritt 2 über Discord-Knöpfe von host-junior, und ein
+nicht erreichbarer Bot setzte die Anfrage auf `notify_failed`, obwohl sie in
+Tardis weiter hätte entschieden werden können.
 """
 
 from __future__ import annotations
@@ -15,16 +20,18 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import httpx
+import os
 
 from app import audit, db, secrets_store, tool_runner
 from app.config import settings
 from app.logging_config import get_logger
+from app.notify import NtfyClient
 
 log = get_logger(__name__)
 
 
 CONFIRM_TTL_SECONDS = 86400  # 24h, Backup-Alerts will man auch morgens noch quittieren
+TARDIS_FREIGABE_URL = os.environ.get("TARDIS_FREIGABE_URL", "https://192.0.2.10/#ops")
 
 
 def _shared_secret() -> str | None:
@@ -49,8 +56,8 @@ async def request(
     reasoning_text: str,
     ttl_s: int = CONFIRM_TTL_SECONDS,
 ) -> dict[str, Any]:
-    """Erzeugt SQLite-Row, ruft host-junior /confirm auf.
-    Returns {result: queued|duplicate|notify_failed, callback_id?}.
+    """Erzeugt die SQLite-Row und schickt einen ntfy-Hinweis.
+    Returns {result: queued|duplicate, callback_id?}.
     """
     callback_id = uuid.uuid4().hex
     row = {
@@ -78,48 +85,22 @@ async def request(
         )
         return {"result": "duplicate"}
 
-    junior_url = settings.notify_url.rstrip("/") + "/confirm"
-    secret = _shared_secret() or ""
-    payload = {
-        "callback_id": callback_id,
-        "tool": tool_name,
-        "args": args,
-        "rule_id": rule_id,
-        "risk": risk,
-        "hint": reasoning_text[:1500],
-        "ttl_seconds": ttl_s,
-        "callback_url": (
-            f"http://brain-bus:8000/api/confirmations/{callback_id}/resolve"
-        ),
-        "callback_secret": secret,
-    }
-    headers = {"X-Brain-Secret": secret} if secret else {}
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=2.0)) as c:
-            resp = await c.post(junior_url, json=payload, headers=headers)
-            log.info(
-                "confirmation.requested",
-                callback_id=callback_id,
-                rule_id=rule_id,
-                tool=tool_name,
-                junior_status=resp.status_code,
-            )
-            if resp.status_code >= 400:
-                db.update_confirmation(callback_id, {"status": "notify_failed"})
-                return {"result": "notify_failed", "junior_status": resp.status_code}
-            try:
-                body = resp.json()
-                if isinstance(body, dict) and body.get("message_id"):
-                    db.update_confirmation(
-                        callback_id,
-                        {"discord_message_id": str(body["message_id"])},
-                    )
-            except Exception:
-                pass
-    except Exception as exc:
-        log.warning("confirmation.notify_error", error=str(exc))
-        db.update_confirmation(callback_id, {"status": "notify_failed"})
-        return {"result": "notify_failed", "error": str(exc)}
+    # Der Hinweis ist nur ein Anstoß, die Anfrage steht schon in der
+    # Warteschlange und ist in Tardis entscheidbar. Ein gescheiterter Push
+    # ändert deshalb nichts am Status (fail-silent wie jeder ntfy-Versand).
+    log.info("confirmation.requested", callback_id=callback_id, rule_id=rule_id, tool=tool_name)
+    if settings.ntfy_url:
+        ttl_h = max(1, ttl_s // 3600)
+        await NtfyClient(settings.ntfy_url, token_file=settings.ntfy_token_file).publish(
+            title=f"Freigabe noetig: {tool_name}",
+            message=(
+                f"Regel {rule_id}, Risiko {risk}. Entscheiden in Tardis > Ops > Freigaben "
+                f"(verfaellt nach {ttl_h} h).\n\n{reasoning_text[:1500]}"
+            ),
+            topic="host-warn",
+            priority="high",
+            click=TARDIS_FREIGABE_URL,
+        )
 
     return {"result": "queued", "callback_id": callback_id}
 
@@ -131,7 +112,7 @@ async def resolve(
     user: str,
     secret: str | None,
 ) -> dict[str, Any]:
-    """Wird vom host-junior Cog aufgerufen wenn User Approve/Deny klickt.
+    """Wird von Tardis aufgerufen, wenn der Owner freigibt oder ablehnt.
 
     Auth: shared-secret per `secret` arg (constant-time compare).
     Fail-closed: wenn Server-Secret nicht geladen, 503 (kein silent bypass).

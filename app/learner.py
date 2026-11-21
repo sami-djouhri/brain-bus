@@ -1,8 +1,9 @@
 """brain-bus Lernschleife.
 
 Wertet Audit-Log (`actions`-Tabelle) der letzten 7 Tage aus, baut pro Rule
-ein Profil, lässt LLM Tuning-Vorschläge generieren, schickt Notify an
-host-junior /notify und legt einen Memory-Snapshot in obsidian ab.
+ein Profil, lässt LLM Tuning-Vorschläge generieren, schickt eine stumme
+ntfy-Meldung (host-info) und legt einen Memory-Snapshot in obsidian ab.
+Bis 2026-11-20 ging die Meldung über host-junior nach Discord.
 
 Aufruf:
   - HTTP: POST /api/learner/run, GET /api/learner/last
@@ -25,7 +26,6 @@ from typing import Any
 
 import httpx
 
-from app.notify import _brain_secret
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,8 @@ LOOKBACK_DAYS = int(os.environ.get("LEARNER_LOOKBACK_DAYS", "7"))
 MIN_FIRED = int(os.environ.get("LEARNER_MIN_FIRED", "3"))
 LAST_REPORT_PATH = Path("/data/learner_last.json")
 
-JUNIOR_NOTIFY_URL = os.environ.get("JUNIOR_NOTIFY_URL", "http://host-junior:8765/notify")
+NTFY_URL = os.environ.get("NTFY_URL", "")
+NTFY_TOKEN_FILE = os.environ.get("NTFY_TOKEN_FILE", "/run/secrets/ntfy_token")
 OBSIDIAN_URL = os.environ.get("OBSIDIAN_URL", "http://obsidian-memory:8765")
 OBSIDIAN_TOKEN_FILE = os.environ.get("OBSIDIAN_TOKEN_FILE", "/run/secrets/obsidian_token")
 LLM_URL = os.environ.get("LLM_FALLBACK_URL", "http://192.0.2.10:8081/v1")
@@ -162,7 +163,7 @@ def _ask_llm(profile: dict[str, Any], rules_yaml: str) -> dict[str, Any]:
         return {"suggestions": [], "_raw": raw[:1000]}
 
 
-def _notify_discord(report: dict[str, Any]) -> None:
+def _notify_ntfy(report: dict[str, Any]) -> None:
     suggestions = report.get("suggestions", [])
     if not suggestions:
         title = "brain-bus Learner"
@@ -170,7 +171,6 @@ def _notify_discord(report: dict[str, Any]) -> None:
             f"Lernschleife fertig: {report['rules_analyzed']} Rules analysiert, "
             "keine Tuning-Vorschlaege."
         )
-        urgent = False
     else:
         lines = []
         for s in suggestions[:10]:
@@ -182,16 +182,21 @@ def _notify_discord(report: dict[str, Any]) -> None:
             )
         title = f"brain-bus Learner - {len(suggestions)} Vorschlaege"
         message = "\n\n".join(lines)[:3800]
-        urgent = False
+    if not NTFY_URL:
+        return
+    headers = {"X-Title": title.encode("ascii", "replace").decode(), "X-Priority": "2"}
+    token = _read_token(NTFY_TOKEN_FILE)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         with httpx.Client(timeout=10.0) as c:
             c.post(
-                JUNIOR_NOTIFY_URL,
-                json={"title": title, "message": message, "urgent": urgent},
-                headers={"X-Brain-Secret": _brain_secret()},
+                f"{NTFY_URL.rstrip('/')}/host-info",
+                content=message.encode("utf-8"),
+                headers=headers,
             ).raise_for_status()
     except Exception as e:
-        logger.warning("junior notify failed: %s", e)
+        logger.warning("learner ntfy failed: %s", e)
 
 
 def _audit_to_memory(report: dict[str, Any]) -> None:
@@ -249,7 +254,7 @@ def run() -> dict[str, Any]:
     LAST_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     LAST_REPORT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
 
-    _notify_discord(report)
+    _notify_ntfy(report)
     _audit_to_memory(report)
     try:
         from app.mqtt import publisher

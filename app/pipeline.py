@@ -10,6 +10,7 @@ wacht wake.sh auf node1 den Container auf, sonst Fallback zu Gemma-4B lokal.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,7 +18,7 @@ from app import actions, decide, diagnose, tool_runner, verlauf
 from app.llm_client import LLMClient
 from app.logging_config import get_logger
 from app.mqtt import publisher
-from app.notify import IrcClient, NotifyClient, NtfyClient
+from app.notify import IrcClient, NtfyClient
 from app.registry import resolve_services
 from app.rules import Event, Rule, rueckfall_annotation
 
@@ -106,6 +107,23 @@ def _meldename(rule: Rule, event: Event | None = None) -> str:
     return rule.id
 
 
+# Tardis-Uebersicht oeffnet mit `#overview/<kurz_id>` die Seitenleiste dieses
+# Alarms. Dieselbe Portal-Adresse wie im Launchpad (`PORTAL_BASIS`).
+TARDIS_ALARM_URL = os.environ.get("TARDIS_ALARM_URL", "https://192.0.2.10/#overview/")
+
+
+def _kurz_id(event: Event | None) -> str:
+    """Kurze Alarm-ID aus dem alerts-Dienst (z.B. `A-7K2Q`), leer bei allem anderen.
+
+    Wird hier nur durchgereicht, nie nachgerechnet: Tardis-Web und Tardis-App
+    zeigen denselben Wert aus derselben Quelle (ZIELBILD 99 (5)).
+    """
+    if event is None:
+        return ""
+    wert = (event.payload or {}).get("kurz_id")
+    return str(wert) if isinstance(wert, str) and wert else ""
+
+
 def _effective_ntfy(rule: Rule, event: Event | None = None) -> dict[str, Any]:
     ntfy = dict(rule.ntfy or {})
     if rule.rueckfall:
@@ -189,10 +207,10 @@ def _rueckfall_text(rule: Rule, feld: str, trigger_event: Event | None) -> str:
 # Entwarnungen) liefen deshalb still ins Leere.
 _NTFY_PRIORITY = {"critical": "5", "high": "4", "normal": "3", "medium": "3", "low": "2"}
 
-# Ab dieser Stufe geht eine Meldung zusaetzlich nach Discord. Discord ist der
-# Arbeitskanal (Verlauf, Buttons, Freigaben) und soll nicht die Info-Spur mitfuehren;
-# ntfy traegt alles und trennt ueber die drei Topics.
-_DISCORD_MIN_RANK = _priority_rank("high")
+# Ab dieser Stufe wird eine Meldung auch ohne Topic zugestellt (dann auf den
+# Vorgabe-Kanal host-critical). Bis 2026-11-20 ging sie in dem Fall nur nach
+# Discord ueber host-junior; Junior ist abgeloest, ntfy ist der einzige Push.
+_RUECKFALL_MIN_RANK = _priority_rank("high")
 
 
 def _build_suggestion(rule: Rule) -> dict[str, Any]:
@@ -268,7 +286,6 @@ async def run_reasoning(
     rule: Rule,
     fingerprint: str,
     llm: LLMClient,
-    notify: NotifyClient | None = None,
     ntfy: NtfyClient | None = None,
     irc: IrcClient | None = None,
     trigger_event: Event | None = None,
@@ -342,15 +359,17 @@ async def run_reasoning(
     )
 
     # Zustellung: ntfy traegt alles mit gesetztem Topic (die drei Kanaele
-    # host-critical/-warn/-info trennen die Dringlichkeit), Discord nur ab high.
-    # Beide Clients sind fail-silent: keiner blockiert den anderen.
+    # host-critical/-warn/-info trennen die Dringlichkeit). Ab high ohne Topic
+    # geht die Meldung auf den Vorgabe-Kanal, damit ein echter Ausfall einer
+    # Regel ohne Topic nicht still verloren geht.
     effective = _effective_ntfy(rule, event)
     priority = effective.get("priority", "")
     rank = _priority_rank(priority)
     topic = effective.get("topic")
-    if (topic or rank >= _DISCORD_MIN_RANK) and (notify is not None or ntfy is not None):
+    if (topic or rank >= _RUECKFALL_MIN_RANK) and ntfy is not None:
         hint = _render_hint(rule, event)
-        title = f"Homelab: {_meldename(rule, event)}"
+        kid = _kurz_id(event)
+        title = f"Homelab {kid}: {_meldename(rule, event)}" if kid else f"Homelab: {_meldename(rule, event)}"
         # Der erste Schritt steht vor der Erklaerung: nachts auf dem Handy soll
         # der Befehl ohne Scrollen sichtbar sein, die Hints sind im Median ~450
         # Zeichen lang. Pflicht fuer host-critical, geprueft von
@@ -373,14 +392,17 @@ async def run_reasoning(
             meta += f", +{rule.suppressed_at_last_fire} gleichartige unterdrueckt"
         body_parts.append(f"\n_{meta}_")
         message = "\n".join(p for p in body_parts if p).strip()
-        if notify is not None and rank >= _DISCORD_MIN_RANK:
-            await notify.notify(title=title, message=message[:1900], urgent=True)
-        if ntfy is not None and topic:
+        if ntfy is not None:
             await ntfy.publish(
                 title=title,
                 message=message[:4000],
-                topic=topic,
+                topic=topic or None,
                 priority=priority,
+                # Ein Alarm mit Kurzkennung oeffnet Tardis; sonst darf die Regel
+                # selbst ein Ziel nennen (ntfy.click), etwa die Fitness-App bei
+                # der Trainingserinnerung.
+                click=(f"{TARDIS_ALARM_URL}{kid}" if kid and TARDIS_ALARM_URL
+                       else str(effective.get("click") or "")),
             )
 
     # IRC bekommt ALLES, auch das, was weder ein Topic hat noch die Discord-Schwelle
@@ -389,7 +411,8 @@ async def run_reasoning(
     # Eine Zeile statt eines Blocks, weil IRC zeilenweise gelesen wird.
     if irc is not None:
         hinweis = _render_hint(rule, event) or _meldename(rule, event)
-        zeile = f"{_meldename(rule, event)}: {hinweis}"
+        kid = _kurz_id(event)
+        zeile = f"{kid + ' ' if kid else ''}{_meldename(rule, event)}: {hinweis}"
         erster_schritt = _render_triage_feld(rule, "erster_schritt", event)
         if erster_schritt:
             zeile += f" | Erster Schritt: {erster_schritt}"

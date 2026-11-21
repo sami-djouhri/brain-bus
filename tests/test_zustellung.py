@@ -1,4 +1,4 @@
-"""Zustellpfad: Platzhalter rendern, Kanal waehlen, Discord nur ab high.
+"""Zustellpfad: Platzhalter rendern, Kanal waehlen, ntfy als einziger Push.
 
 Abgesichert wird, was am 2026-08-23 nachweislich still falsch war:
   * der Hint ging woertlich raus ('{{ event.payload.unit }}' statt der Unit),
@@ -38,24 +38,14 @@ def _regel(*, prioritaet: str, topic: str | None, hint: str = "", payload: dict 
     return r
 
 
-class FakeNotify:
-    """Discord-Seite."""
-
-    def __init__(self) -> None:
-        self.aufrufe: list[dict] = []
-
-    async def notify(self, *, title: str, message: str, urgent: bool = False) -> None:
-        self.aufrufe.append({"title": title, "message": message, "urgent": urgent})
-
-
 class FakeNtfy:
     """Handy-Seite."""
 
     def __init__(self) -> None:
         self.aufrufe: list[dict] = []
 
-    async def publish(self, *, title: str, message: str, topic=None, priority: str = "") -> None:
-        self.aufrufe.append({"title": title, "message": message, "topic": topic, "priority": priority})
+    async def publish(self, *, title: str, message: str, topic=None, priority: str = "", click: str = "") -> None:
+        self.aufrufe.append({"title": title, "message": message, "topic": topic, "priority": priority, "click": click})
 
 
 class FakeLLM:
@@ -74,23 +64,23 @@ async def _dispatch_stub(**kwargs) -> dict:
 
 def _lauf(
     regel: Rule, *, llm_text: str = "", llm: FakeLLM | None = None
-) -> tuple[FakeNotify, FakeNtfy]:
+) -> FakeNtfy:
     """Faehrt den echten Zustellpfad, aber ohne MQTT-Broker und Aktions-Dispatch.
 
     Beides ist hier nicht der Pruefgegenstand und wuerde den Test an einen
     laufenden Broker binden, dann misst er die Umgebung statt den Code.
     """
-    notify, ntfy = FakeNotify(), FakeNtfy()
+    ntfy = FakeNtfy()
     with (
         mock.patch.object(pipeline, "_mqtt_publish_raw"),
         mock.patch.object(pipeline.actions, "dispatch", _dispatch_stub),
     ):
         asyncio.run(
             pipeline.run_reasoning(
-                regel, "fp-test", llm or FakeLLM(llm_text), notify=notify, ntfy=ntfy
+                regel, "fp-test", llm or FakeLLM(llm_text), ntfy=ntfy
             )
         )
-    return notify, ntfy
+    return ntfy
 
 
 class HintRendern(unittest.TestCase):
@@ -132,49 +122,58 @@ class HintRendern(unittest.TestCase):
             hint="Container {{ event.payload.container }} bei {{ event.payload.pct }}%.",
             payload={"container": "gitea", "pct": 94},
         )
-        _, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertEqual(len(ntfy.aufrufe), 1)
         self.assertIn("Container gitea bei 94%.", ntfy.aufrufe[0]["message"])
         self.assertNotIn("{{", ntfy.aufrufe[0]["message"])
+
+
+class KlickZiel(unittest.TestCase):
+    def test_regel_nennt_ihr_klickziel(self):
+        regel = _regel(prioritaet="low", topic="host-info", hint="Training.")
+        regel.ntfy["click"] = "https://fitness.home.arpa/"
+        ntfy = _lauf(regel)
+        self.assertEqual(ntfy.aufrufe[0]["click"], "https://fitness.home.arpa/")
+
+    def test_gegenprobe_ohne_klickziel_bleibt_leer(self):
+        regel = _regel(prioritaet="low", topic="host-info", hint="Training.")
+        ntfy = _lauf(regel)
+        self.assertEqual(ntfy.aufrufe[0]["click"], "")
 
 
 class KanalWahl(unittest.TestCase):
     def test_niedrige_prioritaet_mit_topic_geht_ans_handy(self):
         """Der Kern des alten Fehlers: ssh-login-notify & Entwarnungen."""
         regel = _regel(prioritaet="low", topic="host-info", hint="Anmeldung.")
-        notify, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertEqual(len(ntfy.aufrufe), 1, "info-Kanal muss zugestellt werden")
         self.assertEqual(ntfy.aufrufe[0]["topic"], "host-info")
-        self.assertEqual(notify.aufrufe, [], "info darf Discord nicht belasten")
 
-    def test_normale_prioritaet_geht_ans_handy_nicht_nach_discord(self):
+    def test_normale_prioritaet_geht_ans_handy(self):
         regel = _regel(prioritaet="normal", topic="host-warn", hint="Speicher knapp.")
-        notify, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertEqual(len(ntfy.aufrufe), 1)
         self.assertEqual(ntfy.aufrufe[0]["topic"], "host-warn")
-        self.assertEqual(notify.aufrufe, [])
 
-    def test_hohe_prioritaet_geht_auf_beide_wege(self):
+    def test_hohe_prioritaet_geht_auf_ihren_kanal(self):
         regel = _regel(prioritaet="high", topic="host-critical", hint="Dienst tot.")
-        notify, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertEqual(len(ntfy.aufrufe), 1)
         self.assertEqual(ntfy.aufrufe[0]["topic"], "host-critical")
-        self.assertEqual(len(notify.aufrufe), 1)
-        self.assertTrue(notify.aufrufe[0]["urgent"])
 
     def test_gegenprobe_ohne_topic_und_ohne_hohe_prioritaet_passiert_nichts(self):
         """Sonst wuerde die Suite auch eine Fassung bestehen, die alles zustellt."""
         regel = _regel(prioritaet="low", topic=None, hint="Belanglos.")
-        notify, ntfy = _lauf(regel)
-        self.assertEqual(ntfy.aufrufe, [])
-        self.assertEqual(notify.aufrufe, [])
+        self.assertEqual(_lauf(regel).aufrufe, [])
 
-    def test_hohe_prioritaet_ohne_topic_erreicht_trotzdem_discord(self):
-        """Rueckfallweg: eine Regel ohne Topic darf einen echten Ausfall nicht verlieren."""
+    def test_hohe_prioritaet_ohne_topic_geht_auf_den_vorgabekanal(self):
+        """Rueckfallweg: eine Regel ohne Topic darf einen echten Ausfall nicht
+        verlieren. Bis 2026-11-20 trug ihn Discord (host-junior), jetzt der
+        Vorgabe-Kanal des ntfy-Clients (topic=None, dort host-critical)."""
         regel = _regel(prioritaet="critical", topic=None, hint="Alles aus.")
-        notify, ntfy = _lauf(regel)
-        self.assertEqual(len(notify.aufrufe), 1)
-        self.assertEqual(ntfy.aufrufe, [])
+        ntfy = _lauf(regel)
+        self.assertEqual(len(ntfy.aufrufe), 1)
+        self.assertIsNone(ntfy.aufrufe[0]["topic"])
 
 
 class PrioritaetsAbbildung(unittest.TestCase):
@@ -199,12 +198,12 @@ class UnterdrueckteMitzaehlen(unittest.TestCase):
         """Ohne diese Zeile sieht eine gedaempfte Dauerstoerung aus wie ein Einzelfall."""
         regel = _regel(prioritaet="high", topic="host-critical", hint="Dienst tot.")
         regel.suppressed_at_last_fire = 7
-        _, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertIn("+7 gleichartige unterdrueckt", ntfy.aufrufe[0]["message"])
 
     def test_gegenprobe_ohne_unterdrueckte_keine_zeile(self):
         regel = _regel(prioritaet="high", topic="host-critical", hint="Dienst tot.")
-        _, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertNotIn("unterdrueckt", ntfy.aufrufe[0]["message"])
 
 
@@ -213,13 +212,13 @@ class KiTextKennzeichnen(unittest.TestCase):
         """Das Modell erfindet Details (gemessen: 'Naechster Check um 19:15').
         Es muss unterscheidbar bleiben, was gemessen und was geraten ist."""
         regel = _regel(prioritaet="high", topic="host-critical", hint="Dienst tot.")
-        _, ntfy = _lauf(regel, llm_text="Vermutlich das Netz.")
+        ntfy = _lauf(regel, llm_text="Vermutlich das Netz.")
         nachricht = ntfy.aufrufe[0]["message"]
         self.assertIn("Einschaetzung (KI): Vermutlich das Netz.", nachricht)
 
     def test_gegenprobe_ohne_llm_text_keine_leere_ueberschrift(self):
         regel = _regel(prioritaet="high", topic="host-critical", hint="Dienst tot.")
-        _, ntfy = _lauf(regel, llm_text="")
+        ntfy = _lauf(regel, llm_text="")
         self.assertNotIn("Einschaetzung (KI)", ntfy.aufrufe[0]["message"])
 
 
@@ -230,7 +229,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
         und bekam eine erfundene Ursache an eine gute Nachricht gehaengt."""
         llm = FakeLLM("erfundene Ursache")
         regel = _regel(prioritaet="low", topic="host-info", hint="Unit laeuft wieder.")
-        _, ntfy = _lauf(regel, llm=llm)
+        ntfy = _lauf(regel, llm=llm)
         self.assertEqual(llm.aufrufe, 0, "info-Kanal darf kein LLM kosten")
         self.assertNotIn("Einschaetzung (KI)", ntfy.aufrufe[0]["message"])
         self.assertIn("Unit laeuft wieder.", ntfy.aufrufe[0]["message"])
@@ -240,7 +239,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
         for prio, topic in [("normal", "host-warn"), ("high", "host-critical")]:
             llm = FakeLLM("Deutung")
             regel = _regel(prioritaet=prio, topic=topic, hint="Etwas ist auffaellig.")
-            _, ntfy = _lauf(regel, llm=llm)
+            ntfy = _lauf(regel, llm=llm)
             self.assertEqual(llm.aufrufe, 1, f"{prio} muss deuten")
             self.assertIn("Einschaetzung (KI): Deutung", ntfy.aufrufe[0]["message"])
 
@@ -248,7 +247,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
         """Im Verlauf muss unterscheidbar bleiben, ob das Modell schwieg oder
         gar nicht gefragt wurde, sonst sieht Sparen aus wie ein Ausfall."""
         regel = _regel(prioritaet="low", topic="host-info", hint="Alles gut.")
-        _, ntfy = _lauf(regel, llm=FakeLLM(""))
+        ntfy = _lauf(regel, llm=FakeLLM(""))
         self.assertIn("Quelle: uebersprungen", ntfy.aufrufe[0]["message"])
 
     def test_erster_schritt_steht_vor_der_erklaerung(self):
@@ -260,7 +259,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
             payload={"service": "kalender"},
         )
         regel.triage["erster_schritt"] = "docker logs --tail 50 {{ event.payload.service }}"
-        _, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         nachricht = ntfy.aufrufe[0]["message"]
         self.assertTrue(
             nachricht.startswith("Erster Schritt: docker logs --tail 50 kalender\n"), nachricht
@@ -269,7 +268,7 @@ class LlmNurWoEsEtwasZuDeutenGibt(unittest.TestCase):
 
     def test_gegenprobe_ohne_erster_schritt_keine_leere_zeile(self):
         regel = _regel(prioritaet="high", topic="host-critical", hint="Nur Erklaerung.")
-        _, ntfy = _lauf(regel)
+        ntfy = _lauf(regel)
         self.assertNotIn("Erster Schritt", ntfy.aufrufe[0]["message"])
         self.assertTrue(ntfy.aufrufe[0]["message"].startswith("Nur Erklaerung."))
 

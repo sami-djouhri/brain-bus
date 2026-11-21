@@ -54,6 +54,9 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "container-restart-loop":            ("critical", "high",   3600,  ["host", "service"]),
     "auth-email-bruteforce-spike":       ("critical", "high",   1800,  ["host"]),
     "crowdsec-security-alert":           ("critical", "high",   1800,  ["host"]),
+    # Harte IOC-Befunde (Miner, ld.so.preload, Programm aus tmp). Der Waechter meldet
+    # je Befund nur einmal, solange er besteht; die Abkuehlung faengt nur Doppellaeufe.
+    "ioc-kritisch":                      ("critical", "high",   3600,  ["host"]),
     "edge-domain-unreachable":           ("critical", "high",   1800,  ["domain"]),
     "db-integrity-failed":               ("critical", "high",   3600,  ["host", "db"]),
     "service-unhealthy-timeout":         ("critical", "high",   3600,  ["host", "container"]),
@@ -138,6 +141,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # kommt sie beim naechsten Ausrollen wieder.
     "unit-geheilt":                      ("warn",     "normal", 3600,  ["host"]),
     "config-mount-geheilt":              ("warn",     "normal", 3600,  ["host"]),
+    "container-nachgestartet":           ("warn",     "normal", 3600,  ["host"]),
     "loki-security-alert":               ("critical", "high",   1800,  ["host", "container", "kind"]),
     "ct-log-alert":                      ("critical", "high",   3600,  ["domain"]),
     "attack-surface-alert":              ("critical", "high",   3600,  ["target"]),
@@ -159,6 +163,10 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # --- Jellyfin gegen den Media-Vault (neu 2026-10-03) ---
     # --- Navidrome gegen den Musik-Vault (Meldeweg nachgezogen 2026-11-02) ---
     "log-nachtdigest":                   ("info",     "low",    72000,  []),
+    # Fitness-Anstoesse (2026-11-21 angeschlossen). Den Abstand haelt der Dienst
+    # je Mandant, hier nur gegen Doppellaeufe; ein Rekord ist im Dienst einmalig.
+    "fitness-erinnerung":                ("info",     "low",    72000,  ["owner_sub"]),
+    "fitness-rekord":                    ("info",     "low",    0,     []),
     # --- Backup-Abdeckung (neu 2026-10-04) ---
     "service-degraded-core":             ("warn",     "normal", 3600,  ["host", "service"]),
     "backup-job-failed":                 ("warn",     "normal", 3600,  ["service_id"]),
@@ -211,12 +219,17 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "crowdsec-security-decision":        ("warn",     "normal", 3600,  ["host"]),
     "network-device-discovered-new":     ("warn",     "normal", 3600,  ["mac"]),
     "systemd-unit-failed":               ("warn",     "normal", 3600,  ["host", "unit"]),
+    # Laptop-Erinnerung (2026-11-19): kommt nur, wenn der Laptop im Haus ist und
+    # seine Sicherung laut Gesamtbericht zu alt ist. Der Sender bremst selbst auf
+    # 6 h; die Abkuehlung hier faengt einen Neustart des Senders ab.
+    "laptop-sicherung-erinnerung":       ("warn",     "normal", 21600, ["host"]),
     # Einzige gewollte Abweichung vom Muster "warn -> normal": leiser Kanal, aber hohe
     # Prioritaet und damit auch Discord. Begruendung steht an der Regel selbst, der
     # Waechter meldet je Unit genau EINMAL, eine leise Meldung ginge unter. Genau so
     # blieben meldeweg-probe und ddos-waechter tagelang unbemerkt.
     "systemd-unit-orphan":               ("warn",     "high",   3600,  ["host", "unit"]),
     "db-growth-alert":                   ("warn",     "normal", 86400, ["host", "db"]),
+    "db-engine-veraltet":                ("warn",     "normal", 604800, ["host", "container"]),
     "service-readiness-degraded":        ("warn",     "normal", 3600,  ["host", "container"]),
     "mem-highwater":                     ("warn",     "normal", 3600,  ["host", "container"]),
     "mem-restart":                       ("warn",     "normal", 3600,  ["host", "container"]),
@@ -231,6 +244,10 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # sich nicht gegenseitig wegkuehlen. (Bis 2026-11-04 stand das in rules.yaml
     # ueber cooldown_seconds, wo jeder Lauf dieses Skripts es loescht.)
     "image-cve-alert":                   ("warn",     "normal", 3600,  ["host", "kind"]),
+    # ioc-waechter (2026-11-21). Neu = Abweichung von der Grundlinie, stumm und
+    # ohne-root auf demselben Topic; [host, kind], damit sich die Arten je Wirt
+    # nicht gegenseitig wegkuehlen. Die harte Stufe steht oben unter critical.
+    "ioc-befund":                        ("warn",     "normal", 3600,  ["host", "kind"]),
     "node18-orchestrator-failed":        ("warn",     "normal", 3600,  []),
     # Blindheit des Versions-Waechters. Warn statt info, weil sie sonst genau das
     # Schicksal teilt, das sie meldet: unbemerkt bleiben. Ein veralteter Server
@@ -269,6 +286,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Nachricht am Tag. Die Regel selbst traegt `ohne_deutung: true`, sonst
     # haengt die Kaskade eine erfundene Ursache an lauter Messwerte.
     "lernen-erinnerung":                 ("warn",     "normal", 43200, []),
+    "ci-lauf-rot":                       ("warn",     "normal", 3600,  ["repo"]),
 
     # --- stumm: Entwarnungen, Routine, Nachschlagen ---
     # BEWUSST OHNE Cooldown. Diese Regel traegt die Ende-zu-Ende-Probe des
@@ -339,6 +357,8 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "lager-garantie-laeuft-ab":           ("warn",     "normal", 518400, ["kennung"]),
     # --- Meldewege nachgezogen 2026-10-24: Schwere der Alarmregel, nie lauter ---
     "nachtbericht":                      ("warn",     "normal", 43200, []),
+    # Einmal je reparierter Version, der Waechter merkt sich das selbst.
+    "patch-verfuegbar":                  ("warn",     "normal", 43200, []),
 }
 
 TOPIC = {"critical": "host-critical", "warn": "host-warn", "info": "host-info"}

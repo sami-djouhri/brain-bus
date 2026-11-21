@@ -17,7 +17,7 @@ from app import events, health
 from app.logging_config import configure_logging, get_logger
 from app.mqtt import publisher
 from app.mqtt_subscriber import subscriber
-from app.notify import IrcClient, NotifyClient, NtfyClient
+from app.notify import IrcClient, NtfyClient
 from app.pipeline import publish_suggestion, run_reasoning
 from app.registry import get_service, load_registry
 from app.rules import RuleEngine, load_rules
@@ -32,7 +32,6 @@ SECRETS_DIR = Path("/run/secrets")
 
 _engine: RuleEngine | None = None
 _llm: LLMClient | None = None
-_notify: NotifyClient | None = None
 _ntfy: NtfyClient | None = None
 _irc: IrcClient | None = None
 _reasoning_tasks: set[asyncio.Task[None]] = set()
@@ -49,7 +48,7 @@ def _spawn_reasoning(rule, fingerprint: str, trigger_event=None) -> None:
     if not settings.llm_enabled or _llm is None:
         return
     task = asyncio.create_task(
-        run_reasoning(rule, fingerprint, _llm, _notify, _ntfy, _irc, trigger_event),
+        run_reasoning(rule, fingerprint, _llm, _ntfy, _irc, trigger_event),
         name=f"reasoning-{rule.id}-{fingerprint}",
     )
     _reasoning_tasks.add(task)
@@ -58,7 +57,7 @@ def _spawn_reasoning(rule, fingerprint: str, trigger_event=None) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _engine, _llm, _notify, _ntfy, _irc
+    global _engine, _llm, _ntfy, _irc
     log.info("brain-bus.startup", version=settings.service_version)
 
     # Stufe 8a: DB + Secrets + Tool-Registry vor allem anderen.
@@ -77,10 +76,6 @@ async def lifespan(app: FastAPI):
             fallback=settings.llm_fallback_url,
             wake=settings.llm_wake_url,
         )
-
-    if settings.notify_enabled:
-        _notify = NotifyClient(settings.notify_url, enabled=True)
-        log.info("notify.configured", url=settings.notify_url)
 
     if settings.ntfy_url:
         _ntfy = NtfyClient(
@@ -235,7 +230,7 @@ async def list_confirmations(status: str | None = None, limit: int = 50) -> dict
 
 @app.post("/api/confirmations/{callback_id}/resolve")
 async def resolve_confirmation(callback_id: str, body: dict) -> dict:
-    """Wird vom host-junior Cog aufgerufen wenn User Approve/Deny klickt."""
+    """Wird von Tardis (Ops, Freigaben) aufgerufen, wenn der Owner freigibt oder ablehnt."""
     decision = str(body.get("decision", ""))
     user = str(body.get("user", "?"))
     secret = body.get("secret")

@@ -253,7 +253,7 @@ async def dispatch(
         return {"result": DispatchResult.SKIPPED_HIGH_RISK}
 
     if risk in ("medium", "med"):
-        # Confirm-Flow (Stufe 8c): pending Confirmation in DB + Discord-Embed.
+        # Confirm-Flow (Stufe 8c): pending Confirmation in DB + ntfy-Hinweis, entschieden in Tardis.
         reasoning_text = ""
         if decision:
             reasoning_text = (

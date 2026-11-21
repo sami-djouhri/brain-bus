@@ -1,16 +1,13 @@
 """
-Notify-Client für brain-bus → host-junior Discord-Bot.
+Push-Clients für brain-bus.
 
-POST http://host-junior:8765/notify
-    {"title": "...", "message": "...", "urgent": bool}
-
-Wird gerufen wenn Rule.ntfy.priority == "high".
-Fail-silent, Notification-Fehler blockieren nichts.
+ntfy ist seit 2026-11-20 der einzige Push-Weg. Der frühere NotifyClient
+(POST an host-junior /notify, Discord) ist mit der Ablösung von Junior
+entfallen. Alle Clients sind fail-silent, ein Versandfehler blockiert nichts.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import httpx
@@ -20,49 +17,9 @@ from app.logging_config import get_logger
 log = get_logger(__name__)
 
 
-def _brain_secret() -> str:
-    """Liest das geteilte brain_callback_secret (JJ1: /notify ist jetzt auth-pflichtig)."""
-    path = Path(os.environ.get("BRAIN_CALLBACK_SECRET_FILE", "/run/secrets/brain_callback_secret"))
-    try:
-        return path.read_text(encoding="utf-8").strip()
-    except Exception:
-        return ""
-
-
-class NotifyClient:
-    def __init__(self, base_url: str, enabled: bool = True) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.enabled = enabled
-
-    async def notify(self, *, title: str, message: str, urgent: bool = False) -> None:
-        if not self.enabled:
-            return
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0)) as c:
-                resp = await c.post(
-                    f"{self.base_url}/notify",
-                    json={"title": title, "message": message, "urgent": urgent},
-                    headers={"X-Brain-Secret": _brain_secret()},
-                )
-                # Ein abgelehnter POST ist kein Versand. Bis 2026-08-23 hiess die
-                # Zeile auch bei 401/403 "notify.sent", eine kaputte Zustellung
-                # war im Log von einer geglueckten nicht zu unterscheiden.
-                if resp.is_success:
-                    log.info(
-                        "notify.sent", status=resp.status_code, title=title[:60], urgent=urgent
-                    )
-                else:
-                    log.warning(
-                        "notify.rejected", status=resp.status_code, title=title[:60], urgent=urgent
-                    )
-        except Exception as exc:
-            log.warning("notify.failed", error=str(exc), title=title[:60])
-
-
 class NtfyClient:
-    """Parallel-Kanal an den host-ntfy (notify-net): macht high/critical-Alarme
-    Discord-unabhaengig aufs Handy zustellbar. Fail-silent wie NotifyClient:
-    ein ntfy-Fehler darf den Discord-Pfad nie blockieren (und umgekehrt)."""
+    """Push an den host-ntfy (notify-net), drei Kanaele nach Dringlichkeit.
+    Fail-silent: ein ntfy-Fehler darf die Pipeline nie blockieren."""
 
     # Vollstaendige Abbildung auf die ntfy-Stufen (5=max ... 1=min). Bis 2026-08-23
     # kannte die Tabelle nur high/critical; alles darunter ging ohne X-Priority raus
@@ -97,7 +54,8 @@ class NtfyClient:
             return ""
 
     async def publish(
-        self, *, title: str, message: str, topic: str | None = None, priority: str = ""
+        self, *, title: str, message: str, topic: str | None = None, priority: str = "",
+        click: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -111,6 +69,9 @@ class NtfyClient:
             prio = self._PRIORITY_MAP.get(priority)
             if prio:
                 headers["X-Priority"] = prio
+            if click:
+                # Antippen der Meldung oeffnet diese Adresse (ntfy `Click`).
+                headers["X-Click"] = click
             async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0)) as c:
                 resp = await c.post(
                     f"{self.base_url}/{target}",
@@ -133,16 +94,15 @@ class NtfyClient:
 
 
 class IrcClient:
-    """Dritter Weg neben Discord und ntfy: der interne IRC-Server auf node1.
+    """Zweiter Weg neben ntfy: der interne IRC-Server auf node1 (seit 2026-11-04 auf Eis).
 
-    Der Unterschied zu den beiden anderen ist Absicht: Discord und ntfy bekommen
-    eine Auswahl (Discord ab high, ntfy je nach Kanal), IRC bekommt **alles**, auch
-    das, was fuer einen Push zu leise waere. Ein Chatkanal draengelt nicht, also darf
-    er vollstaendig sein; genau das macht ihn zum Ort, an dem man spaeter nachliest
-    ("wann fing das an?"). Die ~84 taeglichen Pushes bleiben davon unberuehrt.
+    Der Unterschied ist Absicht: ntfy bekommt eine Auswahl je Kanal, IRC bekommt
+    **alles**, auch das, was fuer einen Push zu leise waere. Ein Chatkanal
+    draengelt nicht, also darf er vollstaendig sein; genau das macht ihn zum Ort,
+    an dem man spaeter nachliest ("wann fing das an?").
 
-    Fail-silent wie die anderen: ein IRC-Fehler darf weder Discord noch ntfy
-    blockieren. Welchen Kanal eine Meldung nimmt, entscheidet irc-posten anhand der
+    Fail-silent: ein IRC-Fehler darf ntfy nicht blockieren. Welchen Kanal eine
+    Meldung nimmt, entscheidet irc-posten anhand der
     Dringlichkeit: brain-bus muss den Kanalschnitt des Hauses nicht kennen.
     """
 

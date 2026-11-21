@@ -26,7 +26,6 @@ services:
       LOG_LEVEL: INFO
       HEALTH_DB_PATH: /data/brain.db
       BRAIN_RULES_PATH: /app/config/rules.yaml
-      JUNIOR_NOTIFY_URL: http://host-junior:8765/notify
       NTFY_URL: http://ntfy
       # Dritter Meldeweg: der interne IRC-Server auf node1 (irc-posten). Seit
       # 2026-11-04 auf Eis (Owner: ntfy und Tardis reichen). Leere URL = Weg aus,
