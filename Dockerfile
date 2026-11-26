@@ -1,13 +1,6 @@
-FROM python:3.13-slim
-# Sicherheitsstand des Basis-Image nachziehen. Ein Upstream-Image friert die Paketstaende
-# vom Tag seines Baus ein, Debian-security ist regelmaessig weiter, und ein `--pull` holt
-# nur ein neueres Bild derselben Verspaetung: gemessen am 2026-09-13 trug das aktuelle
-# python:3.13-slim aus der Registry dieselben drei perl-CVEs wie das monatealte lokale.
-# `upgrade`, nicht `dist-upgrade`: letzteres darf Pakete entfernen, um Konflikte zu loesen.
-RUN apt-get update \
- && apt-get -y upgrade \
- && rm -rf /var/lib/apt/lists/*
-
+# Hauseigenes Basisbild (docker/basis-image, ZIELBILD 46 B3): python:3.13-slim mit der
+# Upgrade-Schicht, jede Nacht frisch gebaut. Ein Bau mit --pull holt den Stand der Nacht.
+FROM 127.0.0.1:5000/homelab/python:3.13
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

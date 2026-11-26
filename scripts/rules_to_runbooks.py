@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
+import re
 import sys
 
 import yaml
@@ -139,14 +140,27 @@ def index_note(rules: list[dict]) -> str:
     return "\n".join(out)
 
 
+# Tagesstempel, die sich bei jedem Lauf aendern, ohne dass sich der Inhalt aendert.
+_STEMPEL = re.compile(r"^(updated: ).*$|(Stand: )\d{4}-\d{2}-\d{2}", re.M)
+
+
+def ohne_stempel(text: str) -> str:
+    return _STEMPEL.sub(lambda m: (m.group(1) or m.group(2)) + "<stempel>", text)
+
+
 def write(path: str, content: str, dry: bool) -> str:
     if dry:
         return f"DRY  {path}"
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
-            if "generated: true" not in fh.read(400):
-                return f"SKIP (hand-authored)  {path}"
+            existing = fh.read()
+        if "generated: true" not in existing[:400]:
+            return f"SKIP (hand-authored)  {path}"
+        # Nur das Datum neu: stehen lassen, sonst bettet obsidian-memory jede Nacht
+        # alle Runbooks neu ein.
+        if ohne_stempel(existing) == ohne_stempel(content):
+            return f"SAME  {path}"
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(content)
     return f"WROTE  {path}"

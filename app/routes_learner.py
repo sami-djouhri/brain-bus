@@ -3,18 +3,14 @@
     from app.routes_learner import router as learner_router
     app.include_router(learner_router)
 """
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app import learner
 
 router = APIRouter(prefix="/api/learner", tags=["learner"])
 
-
-@router.post("/run")
-def learner_run(background: BackgroundTasks):
-    """Stößt Lernlauf im Hintergrund an. LLM-Call kann 60-90s dauern."""
-    background.add_task(learner.run)
-    return {"status": "scheduled"}
+# Nur lesend. Den Lauf startet allein der Host-Cron (python -m app.cron_learner);
+# ein POST /run ohne Auth haette jedem Prozess im Netz einen LLM-Lauf erlaubt.
 
 
 @router.get("/last")

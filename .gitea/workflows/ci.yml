@@ -51,8 +51,11 @@ jobs:
           PY
 
       # Hausregeln (leitstand #14): Kopie aus docker/scripts/hausregeln, verteilt von
-      # pruefen.py. Rot nur bei einem Verstoss, der nicht in der Grundlinie steht.
+      # pruefen.py. Rot nur bei einem Verstoss, der nicht in der Grundlinie steht; die
+      # Commit-Nachricht des Kopf-Commits zaehlt fuer die Em-Dash-Regel mit.
       - name: Hausregeln
+        env:
+          HAUSREGELN_COMMIT: ${{ github.event.head_commit.message }}
         run: |
           python -m pip install -q --disable-pip-version-check --root-user-action=ignore pyyaml
           python .gitea/hausregeln.py .

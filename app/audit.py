@@ -15,7 +15,6 @@ from typing import Any
 import httpx
 
 from app import secrets_store
-from app.config import settings
 from app.logging_config import get_logger
 from app.mqtt import publisher
 

@@ -6,8 +6,8 @@ ntfy-Meldung (host-info) und legt einen Memory-Snapshot in obsidian ab.
 Bis 2026-11-20 ging die Meldung über host-junior nach Discord.
 
 Aufruf:
-  - HTTP: POST /api/learner/run, GET /api/learner/last
-  - CLI:  python -m app.cron_learner
+  - CLI:  python -m app.cron_learner (Host-Cron, einziger Ausloeser)
+  - HTTP: GET /api/learner/last (nur lesend)
 
 Mindest-Schwelle: keine Suggestion wenn fired_count < 3 (zu spärliche Daten).
 Auto-Apply: nein. Vorschlag wird nur gepusht.

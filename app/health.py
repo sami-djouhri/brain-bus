@@ -37,11 +37,6 @@ def clear_checks() -> None:
     _checks.clear()
 
 
-def registered_checks() -> tuple[str, ...]:
-    """Namen der aktuell registrierten Checks."""
-    return tuple(_checks)
-
-
 async def _invoke(fn: HealthCheck) -> None:
     if inspect.iscoroutinefunction(fn):
         await fn()

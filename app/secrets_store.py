@@ -33,10 +33,3 @@ def init(dir_path: Path | None = None) -> None:
 
 def get(name: str) -> str | None:
     return _secrets.get(name)
-
-
-def require(name: str) -> str:
-    val = _secrets.get(name)
-    if not val:
-        raise RuntimeError(f"required secret not found: {name}")
-    return val

@@ -70,10 +70,6 @@ def get(name: str) -> ToolSpec | None:
     return _tools.get(name)
 
 
-def all_tools() -> dict[str, ToolSpec]:
-    return dict(_tools)
-
-
 # --- Templating ---
 
 def _resolve_path(context: dict[str, Any], dotted: str) -> Any:

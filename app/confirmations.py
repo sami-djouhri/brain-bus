@@ -94,7 +94,8 @@ async def request(
         await NtfyClient(settings.ntfy_url, token_file=settings.ntfy_token_file).publish(
             title=f"Freigabe noetig: {tool_name}",
             message=(
-                f"Regel {rule_id}, Risiko {risk}. Entscheiden in Tardis > Ops > Freigaben "
+                f"Regel {rule_id}, Risiko {risk}. Entscheiden in der Tardis-App unter Freigaben "
+                f"(Hausbus fragt) oder in Tardis-Web > Ops "
                 f"(verfaellt nach {ttl_h} h).\n\n{reasoning_text[:1500]}"
             ),
             topic="host-warn",

@@ -165,7 +165,6 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     "log-nachtdigest":                   ("info",     "low",    72000,  []),
     # Fitness-Anstoesse (2026-11-21 angeschlossen). Den Abstand haelt der Dienst
     # je Mandant, hier nur gegen Doppellaeufe; ein Rekord ist im Dienst einmalig.
-    "fitness-erinnerung":                ("info",     "low",    72000,  ["owner_sub"]),
     "fitness-rekord":                    ("info",     "low",    0,     []),
     # --- Backup-Abdeckung (neu 2026-10-04) ---
     "service-degraded-core":             ("warn",     "normal", 3600,  ["host", "service"]),
@@ -253,6 +252,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # Schicksal teilt, das sie meldet: unbemerkt bleiben. Ein veralteter Server
     # weist Spieler ab, steht aber weiter "online" in der Liste.
     "game-version-unmessbar":            ("warn",     "normal", 86400, ["spiel"]),
+    "game-version-auto-offen":           ("warn",     "normal", 86400, ["spiel", "art", "status"]),
     # pin-wache: neue Version oder ungleiche Wirte, sieben Tage je Image; Blindheit taeglich.
     "pin-veraltet":                      ("warn",     "normal", 604800, ["name"]),
     "pin-abweichend":                    ("warn",     "normal", 604800, ["name"]),
@@ -307,6 +307,7 @@ ZUORDNUNG: dict[str, tuple[str, str, int, list[str]]] = {
     # also genau die, die interessant waere.
     "ssh-login-notify":                  ("info",     "low",    0,     ["host", "user", "source"]),
     "game-version-wieder-messbar":       ("info",     "low",    300,   ["spiel"]),
+    "game-version-auto-eingespielt":     ("info",     "low",    300,   ["spiel", "art"]),
     "game-server-uptodate":              ("info",     "low",    86400, ["spiel"]),
     # Eine Lampe rechtfertigt keine Unterbrechung. Stumm, aber nachschlagbar --
     # der Unterschied zur Steckdose ist, dass "aus" hier ein gueltiger Zustand ist.
