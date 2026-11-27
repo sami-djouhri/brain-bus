@@ -223,10 +223,6 @@ async def resolve(
         "http_status": None,
         "response_excerpt": None,
         "elapsed_ms": None,
-        # V1 „Gläserne Autonomie": Warum-Spur. Die LLM-Begründung wurde beim
-        # request() als reasoning_text persistiert; die Confidence liegt (mangels
-        # Spalte in confirmations) nicht vor → None. decision_source markiert die
-        # Owner-Freigabe (Gegenstück zum llm_source des Auto-Pfads).
         "decision_confidence": None,
         "decision_reasoning": (row.get("reasoning_text") or "").strip() or None,
         "decision_source": f"confirm:{user}" if user else "confirm",

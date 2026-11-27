@@ -348,7 +348,6 @@ async def _execute(
 
     audit_record = {**row, "decision_by": decision_by or source}
     audit.publish_mqtt(audit_record)
-    # Memory async: non-blocking
     import asyncio
     asyncio.create_task(audit.write_memory(audit_record))
 

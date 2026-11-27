@@ -12,7 +12,7 @@ def notiz(alarme: str, gebaut: str = "") -> str:
             f"### Alarme\n\n{alarme}\n\n### Ausfälle (Blackbox)\n\nKeine.\n")
 
 
-JF = "- 17:43 bis 18:12 (30 min): JellyfinWillNachDraussen (node1) [critical]"
+JF = "- 17:43 bis 18:12 (30 min): GrafanaWillNachDraussen (node1) [critical]"
 
 
 class VerlaufTests(unittest.TestCase):
@@ -31,14 +31,14 @@ class VerlaufTests(unittest.TestCase):
                          "Verlauf (Chronik): kein früherer Fall von BackupFailed in 1 Tagen mit Chronik.")
 
     def test_letzter_fall_regelmaessig_und_commit_mit_suchwort(self):
-        gebaut = ("### host/homelab-work (2)\n- 17:00 `aaaaaaa` jellyfin vorher, zaehlt nicht\n"
-                  "- 17:51 `f114847` monitoring: Jellyfin-Alarmtexte richtig\n")
+        gebaut = ("### host/homelab-work (2)\n- 17:00 `aaaaaaa` grafana vorher, zaehlt nicht\n"
+                  "- 17:51 `f114847` monitoring: Grafana-Alarmtexte richtig\n")
         n = {date(2026, 11, 1): notiz(JF), date(2026, 11, 2): notiz(JF.replace("17:43", "17:40")),
              date(2026, 11, 3): notiz(JF.replace("17:43", "17:42"), gebaut)}
-        satz = verlauf.verlauf_text("JellyfinWillNachDraussen", n, HEUTE, {"host": "node1"})
+        satz = verlauf.verlauf_text("GrafanaWillNachDraussen", n, HEUTE, {"host": "node1"})
         self.assertTrue(satz.startswith("Verlauf (Chronik): zuletzt am 3. November 17:42 bis 18:12 (30 min, node1), an 3 von 3 Tagen mit Chronik."), satz)
         self.assertIn("Kommt regelmäßig gegen 17:42 (3 von 3 Fällen).", satz)
-        self.assertIn("mit „Jellyfin“ im Text: homelab-work f114847", satz)
+        self.assertIn("mit „Grafana“ im Text: homelab-work f114847", satz)
         self.assertNotIn("aaaaaaa", satz)
 
     def test_ueber_mitternacht_mit_ende_und_fremder_host(self):

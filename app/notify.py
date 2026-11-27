@@ -21,10 +21,6 @@ class NtfyClient:
     """Push an den host-ntfy (notify-net), drei Kanaele nach Dringlichkeit.
     Fail-silent: ein ntfy-Fehler darf die Pipeline nie blockieren."""
 
-    # Vollstaendige Abbildung auf die ntfy-Stufen (5=max ... 1=min). Bis 2026-08-23
-    # kannte die Tabelle nur high/critical; alles darunter ging ohne X-Priority raus
-    # bzw. wurde vom Aufrufer gar nicht erst zugestellt. Damit die drei Kanaele
-    # (critical/warn/info) am Handy unterschiedlich klingen, muss jede Stufe gesetzt sein.
     _PRIORITY_MAP = {
         "critical": "5",
         "crit": "5",

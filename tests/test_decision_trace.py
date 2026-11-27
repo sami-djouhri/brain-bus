@@ -17,7 +17,6 @@ class DecisionTraceTests(unittest.TestCase):
         self._db_path = Path(self._tmp.name) / "brain.db"
         db.init(self._db_path)
 
-        # Seiteneffekte stubben (kein MQTT/HTTP/Memory in Unit-Tests).
         self._orig = {
             "get": tool_runner.get,
             "run": tool_runner.run,
@@ -98,9 +97,6 @@ class DecisionTraceTests(unittest.TestCase):
         self.assertIsNone(row["decision_source"])
 
     def test_confirm_action_persists_reasoning_from_confirmation(self):
-        # Confirm-Pfad läuft NICHT durch _execute(): confirmations.resolve() baut
-        # die actions-Zeile inline. decision_reasoning stammt aus der beim request()
-        # persistierten reasoning_text, decision_source markiert die Owner-Freigabe.
         from app import confirmations, secrets_store
         orig_secret = secrets_store.get
         secrets_store.get = lambda key: "unit-secret" if key == "brain_callback_secret" else None

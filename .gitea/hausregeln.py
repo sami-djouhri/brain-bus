@@ -61,7 +61,7 @@ TEXT = {".md", ".py", ".sh", ".bash", ".ts", ".js", ".svelte", ".yml", ".yaml", 
 SKRIPT = {".sh", ".bash", ".py", ".yml", ".yaml", ".service", ".timer", ".conf", ".rules"}
 NIE_TEXT = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "poetry.lock", "uv.lock"}
 OFFEN = {"0.0.0.0", "127.0.0.1", "::", "::1"}
-# Bewusste Bindings laut die Projektregeln (Netzwerk): LAN-IP von host und das WireGuard-Ende.
+# Bewusste Bindings laut den Projektregeln (Netzwerk): LAN-IP von host und das WireGuard-Ende.
 # Andere Host-IPs brauchen den Zeilenkommentar `hausregeln: bewusst`.
 BEWUSST_GEBUNDEN = {"192.0.2.10", "192.0.2.10"}
 # Gebaute Buendel (Vite: assets/index-DM84b0VX.js) und Minifiziertes: der Name wechselt mit

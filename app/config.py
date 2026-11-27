@@ -41,8 +41,6 @@ class Settings(BaseSettings):
     llm_fallback_model: str | None = "gemma-3-4b"
     llm_wake_url: str | None = "http://192.0.2.10:9090/wake"
 
-    # Notifications (Stufe 7). ntfy ist seit 2026-11-20 der einzige Push-Weg
-    # (vorher zusaetzlich Discord ueber host-junior). Leerer ntfy_url = aus.
     ntfy_url: str | None = None
     ntfy_token_file: str | None = "/run/secrets/ntfy_token"
     ntfy_default_topic: str = "host-critical"

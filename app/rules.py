@@ -50,12 +50,6 @@ class Rule:
     include_retained: bool = False
     diagnose: list[dict[str, Any]] = field(default_factory=list)  # [{tool, args}]
     action: dict[str, Any] | None = None  # {tool, args, risk?, confidence_threshold?}
-    # Mindestabstand zwischen zwei Meldungen. 0 = aus.
-    # Ohne das feuert eine Regel ab min_events bei JEDEM weiteren Event erneut:
-    # der fingerprint() hasht die Event-Zeitstempel, jedes neue Event ergibt einen
-    # neuen Hash, der Idempotenz-Check greift also nur bei doppelter Zustellung.
-    # Gemessen 2026-08-19: docker-network-unauthorized-connect 144 Meldungen an
-    # einem Tag, jede mit LLM-Reasoning (Median 28 s) und urgent-Push.
     cooldown_seconds: int = 0
     # Payload-Felder, die das Subjekt der Meldung bestimmen (z.B. host+container).
     # Der Cooldown gilt dann je Subjekt: derselbe Container wird gedaempft, ein
@@ -69,18 +63,6 @@ class Rule:
     ruhezeit_je_subjekt: dict[str, int] = field(default_factory=dict)
     suppressed: dict[str, int] = field(default_factory=dict)
     suppressed_at_last_fire: int = 0  # Stand beim Ausloesen, fuer die Meldung
-    # Das Ereignis, das DIESE Meldung ausgeloest hat. Der Hint wurde bis
-    # 2026-09-05 gegen events[-1] gerendert, also gegen das zuletzt EINGETROFFENE
-    # statt gegen das ausloesende. Solange beides dasselbe ist, faellt das nicht auf.
-    # Es faellt auseinander, sobald mehrere Subjekte gleichzeitig melden: zwischen
-    # Ausloesen und Zustellen liegt der LLM-Aufruf (gemessen 22 bis 33 s), und in
-    # dieser Zeit haengen die uebrigen Subjekte ihre Events an.
-    # Belegt am 2026-09-05 an den Tapo-Geraeten: drei Leuchtmittel meldeten je
-    # einzeln (der Cooldown je Subjekt trennte korrekt), aber alle drei Meldungen
-    # nannten dasselbe Geraet, 'Strip L930'. Zwei Steckdosen-Meldungen nannten beide
-    # 'Hub H100'. Die Meldung war also da und nannte das falsche Subjekt -- die
-    # unangenehmere Haelfte von "Meldung nennt nicht, WO".
-    # Betrifft jede Regel mit cooldown_key_fields und Platzhaltern im Hint.
     trigger_event: Event | None = None
     # Auffangregel (ZIELBILD 99): greift nur, wenn fuer das Topic keine eigene
     # Regel existiert. Kanal, Ruhezeit und Texte kommen dann aus dem Alarm selbst

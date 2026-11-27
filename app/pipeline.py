@@ -201,15 +201,8 @@ def _rueckfall_text(rule: Rule, feld: str, trigger_event: Event | None) -> str:
     return ""
 
 
-# ntfy-Prioritaeten: 5=max (Klingelton bricht durch), 4=high, 3=default, 2=low, 1=min.
-# Bis 2026-08-23 waren nur high/critical gemappt und alles darunter wurde gar nicht
-# zugestellt: 11 Regeln mit gesetztem Topic (u.a. ssh-login-notify und saemtliche
-# Entwarnungen) liefen deshalb still ins Leere.
 _NTFY_PRIORITY = {"critical": "5", "high": "4", "normal": "3", "medium": "3", "low": "2"}
 
-# Ab dieser Stufe wird eine Meldung auch ohne Topic zugestellt (dann auf den
-# Vorgabe-Kanal host-critical). Bis 2026-11-20 ging sie in dem Fall nur nach
-# Discord ueber host-junior; Junior ist abgeloest, ntfy ist der einzige Push.
 _RUECKFALL_MIN_RANK = _priority_rank("high")
 
 
@@ -305,24 +298,8 @@ async def run_reasoning(
         rule.diagnose, last_event_payload
     )
     diag_block = diagnose.to_prompt_block(diag_results)
-    # Stufe 4 (ZIELBILD 67): kritische Alarme bringen ihren Verlauf aus der
-    # Chronik mit. Gemessen, nicht gedeutet; leer bei allem anderen.
     verlauf_zeile = await verlauf.fuer_ereignis(event.topic, event.payload or {}) if event else ""
 
-    # Der stumme Kanal bekommt keine KI-Deutung. Eine Entwarnung
-    # ("Unit X laeuft wieder") hat nichts zu deuten, das Modell haengt dann nur
-    # eine erfundene Ursache an eine gute Nachricht. Gemessen: allein
-    # systemd-unit-recovered lief 49x in 3,8 Tagen durch ein LLM, Median 28 s.
-    # Der Rest der Kaskade (Diagnose, Decide, Aktion) laeuft weiter, hier faellt
-    # ausschliesslich die Erzaehlung weg.
-    # `triage.ohne_deutung: true` schaltet die Erzaehlung auch bei hoeherer
-    # Prioritaet ab. Bisher hing das allein an der Prioritaet, und das reichte
-    # nicht: eine Meldung kann sichtbar sein MUESSEN und trotzdem nichts zu
-    # deuten haben. Erster Fall ist `lernen-erinnerung`, eine taegliche
-    # Erinnerung an einen Pruefungstermin. Still (low) wird sie uebersehen und
-    # ist damit wirkungslos, mit `normal` haengte das Modell ihr eine erfundene
-    # technische Ursache an einen Satz, der nur aus Messwerten besteht.
-    # Rueckwaertskompatibel: fehlt das Feld, gilt genau das alte Verhalten.
     if rule.triage.get("ohne_deutung") or _priority_rank(
         _effective_ntfy(rule, event).get("priority", "")
     ) <= _priority_rank("low"):
@@ -381,9 +358,6 @@ async def run_reasoning(
         if verlauf_zeile:
             body_parts.append("\n" + verlauf_zeile)
         if reasoning_text:
-            # Als Einschaetzung kennzeichnen: der Text stammt vom LLM und stand
-            # bisher ununterscheidbar neben den Messwerten. Wer nachts aufs Handy
-            # schaut, muss sehen, was gemessen und was geraten ist.
             body_parts.append("\nEinschaetzung (KI): " + reasoning_text)
         meta = f"Events: {len(rule.events)}, Quelle: {result.get('source')}"
         if rule.suppressed_at_last_fire:
